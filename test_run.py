@@ -40,8 +40,7 @@ if __name__ == '__main__':
             return
 
         # Parse command line options
-        function_style = 'callout' #'emphasis'
-        show_linenos = True
+        show_linenos = False
         full_document = False
 
         try:
@@ -60,7 +59,6 @@ if __name__ == '__main__':
             # Create formatter with options
             formatter_options = {
                 'highlight_functions': True,
-                'function_style': function_style,
                 'linenos': show_linenos,
                 'full': full_document
             }
@@ -79,7 +77,7 @@ if __name__ == '__main__':
             result = highlight(code, lexer, formatter)
 
             # Output the result
-            print(result)
+            logging.info(f"Result:\n{result}")
 
         except Exception as e:
             print(f"Error processing file: {e}")
