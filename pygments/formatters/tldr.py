@@ -236,7 +236,7 @@ class TLDRFormatter(Formatter):
 
         # Look for Name.Function token (our primary detection method)
         ttype, value = tokens[i]
-        if ttype == Name.Function:
+        if ttype == Name.Function or ttype == Name.Function.Magic:
             # High confidence this is a function definition
             function_name = value
             found_name = True
