@@ -8,8 +8,8 @@
 
 import pytest
 
-from pygments.lexers.tnt import TNTLexer
-from pygments.token import Text, Operator, Keyword, Name, Number, \
+from pygments_tldr.lexers.tnt import TNTLexer
+from pygments_tldr.token import Text, Operator, Keyword, Name, Number, \
     Punctuation, Error
 
 

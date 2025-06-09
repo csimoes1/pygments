@@ -10,7 +10,7 @@ import re
 import random
 from itertools import combinations_with_replacement
 
-from pygments.regexopt import regex_opt
+from pygments_tldr.regexopt import regex_opt
 
 ALPHABET = ['a', 'b', 'c', 'd', 'e']
 

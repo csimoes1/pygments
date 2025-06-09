@@ -6,8 +6,8 @@
     :license: BSD, see LICENSE for details.
 """
 
-from pygments.lexer import RegexLexer, words
-from pygments.token import Token
+from pygments_tldr.lexer import RegexLexer, words
+from pygments_tldr.token import Token
 
 
 class MyLexer(RegexLexer):

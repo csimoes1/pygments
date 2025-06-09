@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-import pygments.lexers
-from pygments.token import Error
+import pygments_tldr.lexers
+from pygments_tldr.token import Error
 
 
 def pytest_addoption(parser):
@@ -45,7 +45,7 @@ class LexerTestItem(pytest.Item):
                 yield ''
 
     def runtest(self):
-        lexer = pygments.lexers.get_lexer_by_name(self.lexer)
+        lexer = pygments_tldr.lexers.get_lexer_by_name(self.lexer)
         tokens = list(lexer.get_tokens(self.input))
         self.actual = '\n'.join(self._prettyprint_tokens(tokens)).rstrip('\n') + '\n'
         if self.config.getoption('--update-goldens'):

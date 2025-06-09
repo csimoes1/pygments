@@ -1,9 +1,9 @@
 import bz2
 import gzip
 
-from pygments import highlight
-from pygments.formatters import HtmlFormatter, RawTokenFormatter
-from pygments.lexers import PythonLexer, RawTokenLexer
+from pygments_tldr import highlight
+from pygments_tldr.formatters import HtmlFormatter, RawTokenFormatter
+from pygments_tldr.lexers import PythonLexer, RawTokenLexer
 
 
 def test_raw_token():

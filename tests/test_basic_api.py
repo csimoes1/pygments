@@ -15,14 +15,14 @@ import re
 
 import pytest
 
-from pygments import lexers, formatters, lex, format, __version__
-from pygments.token import _TokenType, Text
-from pygments.lexer import RegexLexer
-import pygments
-from pygments.formatter import Formatter
-from pygments.formatters.img import FontNotFound
-from pygments.lexers import LEXERS
-from pygments.util import ClassNotFound
+from pygments_tldr import lexers, formatters, lex, format, __version__
+from pygments_tldr.token import _TokenType, Text
+from pygments_tldr.lexer import RegexLexer
+import pygments_tldr
+from pygments_tldr.formatter import Formatter
+from pygments_tldr.formatters.img import FontNotFound
+from pygments_tldr.lexers import LEXERS
+from pygments_tldr.util import ClassNotFound
 
 TESTDIR = path.dirname(path.abspath(__file__))
 TESTFILE = path.join(TESTDIR, 'test_basic_api.py')
@@ -63,7 +63,7 @@ def test_lexer_classes(cls):
     if cls._example is not None:
         assert isinstance(cls._example, str)
         p = (
-            pathlib.Path(inspect.getabsfile(pygments)).parent.parent
+            pathlib.Path(inspect.getabsfile(pygments_tldr)).parent.parent
             / "tests"
             / "examplefiles"
             / cls._example
@@ -224,7 +224,7 @@ def test_formatter_public_api(cls):
 
 
 def test_formatter_encodings():
-    from pygments.formatters import HtmlFormatter
+    from pygments_tldr.formatters import HtmlFormatter
 
     # unicode output
     fmt = HtmlFormatter()
@@ -286,13 +286,13 @@ def test_get_formatters():
 
 def test_styles():
     # minimal style test
-    from pygments.formatters import HtmlFormatter
+    from pygments_tldr.formatters import HtmlFormatter
     HtmlFormatter(style="pastie")
 
 
 def test_bare_class_handler():
-    from pygments.formatters import HtmlFormatter
-    from pygments.lexers import PythonLexer
+    from pygments_tldr.formatters import HtmlFormatter
+    from pygments_tldr.lexers import PythonLexer
     try:
         lex('test\n', PythonLexer)
     except TypeError as e:

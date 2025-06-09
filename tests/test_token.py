@@ -10,7 +10,7 @@ import copy
 
 import pytest
 
-from pygments import token
+from pygments_tldr import token
 
 
 def test_tokentype():

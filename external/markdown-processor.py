@@ -30,9 +30,9 @@ import re
 from markdown.preprocessors import Preprocessor
 from markdown.extensions import Extension
 
-from pygments import highlight
-from pygments.formatters import HtmlFormatter
-from pygments.lexers import get_lexer_by_name, TextLexer
+from pygments_tldr import highlight
+from pygments_tldr.formatters import HtmlFormatter
+from pygments_tldr.lexers import get_lexer_by_name, TextLexer
 
 
 # Options

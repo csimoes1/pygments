@@ -8,8 +8,8 @@
 
 import sys
 
-from pygments.lexers import get_all_lexers, find_lexer_class
-from pygments.lexer import Lexer
+from pygments_tldr.lexers import get_all_lexers, find_lexer_class
+from pygments_tldr.lexer import Lexer
 
 import argparse
 

@@ -1,6 +1,6 @@
 import pytest
-from pygments.lexers.func import FuncLexer
-from pygments.token import Token, Name
+from pygments_tldr.lexers.func import FuncLexer
+from pygments_tldr.token import Token, Name
 
 @pytest.fixture(scope='module')
 def lexer_func():

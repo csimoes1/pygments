@@ -44,7 +44,7 @@ import pathlib
 import re
 import sys
 
-from pygments import token, lexers
+from pygments_tldr import token, lexers
 
 
 def lookup_all_lexers():

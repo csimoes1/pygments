@@ -6,12 +6,12 @@
     :license: BSD, see LICENSE for details.
 """
 
-from pygments import highlight
-from pygments.lexer import RegexLexer
-from pygments.lexers import PythonLexer
-from pygments.style import Style
-from pygments.token import Token
-from pygments.formatters import GroffFormatter
+from pygments_tldr import highlight
+from pygments_tldr.lexer import RegexLexer
+from pygments_tldr.lexers import PythonLexer
+from pygments_tldr.style import Style
+from pygments_tldr.token import Token
+from pygments_tldr.formatters import GroffFormatter
 
 
 # FIXME: more thorough tests

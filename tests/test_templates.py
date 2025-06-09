@@ -1,9 +1,9 @@
 import pytest
 
-from pygments.lexers.templates import JavascriptDjangoLexer, MasonLexer, \
+from pygments_tldr.lexers.templates import JavascriptDjangoLexer, MasonLexer, \
     SqlJinjaLexer, VelocityLexer
 
-from pygments.token import Comment
+from pygments_tldr.token import Comment
 
 
 @pytest.fixture(scope="module")

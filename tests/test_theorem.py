@@ -4,7 +4,7 @@ Tests of the theorem lexers
 
 import textwrap
 
-from pygments.lexers.lean import Lean3Lexer, Lean4Lexer
+from pygments_tldr.lexers.lean import Lean3Lexer, Lean4Lexer
 
 def test_lean3_import():
     s = textwrap.dedent("""\

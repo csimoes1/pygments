@@ -8,11 +8,11 @@
 
 import pytest
 
-from pygments.lexers.sql import name_between_bracket_re, \
+from pygments_tldr.lexers.sql import name_between_bracket_re, \
     name_between_backtick_re, tsql_go_re, tsql_declare_re, \
     tsql_variable_re, MySqlLexer, TransactSqlLexer
 
-from pygments.token import Comment, Name, Number, Punctuation, Whitespace
+from pygments_tldr.token import Comment, Name, Number, Punctuation, Whitespace
 
 
 @pytest.fixture(scope='module')

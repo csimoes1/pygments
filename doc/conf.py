@@ -12,10 +12,10 @@ import sys
 sys.path.insert(0, os.path.abspath('..'))
 
 # ruff: noqa: E402
-import pygments
-import pygments.formatters
-import pygments.lexers
-import pygments.styles
+import pygments_tldr
+import pygments_tldr.formatters
+import pygments_tldr.lexers
+import pygments_tldr.styles
 import tests.contrast.test_contrasts as test_contrasts
 
 # -- General configuration -----------------------------------------------------
@@ -48,7 +48,7 @@ copyright = '2006-2024, Georg Brandl and Pygments contributors'
 # built documents.
 #
 # The short X.Y version.
-version = pygments.__version__
+version = pygments_tldr.__version__
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -230,33 +230,33 @@ man_pages = [
 # Example configuration for intersphinx: refer to the Python standard library.
 #intersphinx_mapping = {'http://docs.python.org/': None}
 
-rst_prolog = f'.. |language_count| replace:: {len(list(pygments.lexers.get_all_lexers()))}'
+rst_prolog = f'.. |language_count| replace:: {len(list(pygments_tldr.lexers.get_all_lexers()))}'
 
 def pg_context(app, pagename, templatename, ctx, event_arg):
     ctx['demo_active'] = bool(os.environ.get('WEBSITE_BUILD'))
 
     if pagename == 'demo':
-        ctx['lexers'] = sorted(pygments.lexers.get_all_lexers(plugins=False), key=lambda x: x[0].lower())
+        ctx['lexers'] = sorted(pygments_tldr.lexers.get_all_lexers(plugins=False), key=lambda x: x[0].lower())
 
     if pagename in ('styles', 'demo'):
         with open('examples/example.py', encoding='utf-8') as f:
             html = f.read()
-        lexer = pygments.lexers.get_lexer_for_filename('example.py')
+        lexer = pygments_tldr.lexers.get_lexer_for_filename('example.py')
         min_contrasts = test_contrasts.min_contrasts()
         ctx['styles_aa'] = []
         ctx['styles_sub_aa'] = []
         # Use STYLE_MAP directly so we don't get plugins as with get_all_styles().
-        for style in pygments.styles.STYLE_MAP:
-            if not pygments.styles.get_style_by_name(style).web_style_gallery_exclude:
+        for style in pygments_tldr.styles.STYLE_MAP:
+            if not pygments_tldr.styles.get_style_by_name(style).web_style_gallery_exclude:
                 aa = min_contrasts[style] >= test_contrasts.WCAG_AA_CONTRAST
-                bg_r, bg_g, bg_b = test_contrasts.hex2rgb(pygments.styles.get_style_by_name(style).background_color)
+                bg_r, bg_g, bg_b = test_contrasts.hex2rgb(pygments_tldr.styles.get_style_by_name(style).background_color)
                 ctx['styles_aa' if aa else 'styles_sub_aa'].append(
                     dict(
                         name=style,
-                        html=pygments.highlight(
+                        html=pygments_tldr.highlight(
                             html,
                             lexer,
-                            pygments.formatters.HtmlFormatter(noclasses=True, style=style),
+                            pygments_tldr.formatters.HtmlFormatter(noclasses=True, style=style),
                         ),
                         # from https://en.wikipedia.org/wiki/Relative_luminance
                         bg_luminance=(0.2126*bg_r + 0.7152*bg_g + 0.0722*bg_b)

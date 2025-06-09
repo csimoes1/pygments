@@ -11,11 +11,11 @@ import itertools
 import re
 import pytest
 
-from pygments.formatters import RtfFormatter
-from pygments.lexers import CppLexer, PythonLexer
-from pygments.lexers.special import TextLexer
-from pygments.style import _ansimap, Style
-from pygments.token import Name, String, Token
+from pygments_tldr.formatters import RtfFormatter
+from pygments_tldr.lexers import CppLexer, PythonLexer
+from pygments_tldr.lexers.special import TextLexer
+from pygments_tldr.style import _ansimap, Style
+from pygments_tldr.token import Name, String, Token
 
 foot = r'\par' '\n' r'}' + '\n'
 

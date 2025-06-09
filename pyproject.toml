@@ -3,19 +3,17 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "Pygments"
+name = "Pygments-tldr"
 dynamic = ["version"]
 requires-python = ">=3.8"
 license = {text = "BSD-2-Clause"}
 authors = [
-  {name = "Georg Brandl", email = "georg@python.org"}
+  {name = "Chris Simoes", email = "csimoes1@yahoo.com"}
 ]
 maintainers = [
-  {name = "Georg Brandl", email = "georg@python.org"},
-  {name = "Matthäus G. Chajdas"},
-  {name = "Jean Abou Samra", email = "jean@abou-samra.fr"},
+    {name = "Chris Simoes", email = "csimoes1@yahoo.com"}
 ]
-description = "Pygments is a syntax highlighting package written in Python."
+description = "Pygments-tldr is a fork of pygments with a formatter to extract function signatures"
 # For PyPI, use a shorter description than README.rst.
 readme = {file = "description.rst", content-type = "text/x-rst"}
 keywords = ["syntax highlighting"]
@@ -45,21 +43,21 @@ plugins = [] # kept for backwards compatibility
 windows-terminal = ["colorama >= 0.4.6"]
 
 [project.urls]
-Homepage = "https://pygments.org"
-Documentation = "https://pygments.org/docs"
-Source = "https://github.com/pygments/pygments"
-"Bug Tracker" = "https://github.com/pygments/pygments/issues"
-Changelog = "https://github.com/pygments/pygments/blob/master/CHANGES"
+Homepage = "https://github.com/csimoes1/pygments-tldr"
+Documentation = "https://github.com/csimoes1/pygments-tldr"
+Source = "https://github.com/csimoes1/pygments-tldr"
+"Bug Tracker" = "https://github.com/csimoes1/pygments-tldr"
+Changelog = "https://github.com/csimoes1/pygments-tldr/blob/master/CHANGES"
 
 [project.scripts]
 pygmentize = "pygments.cmdline:main"
 
 # Temporary workaround for https://github.com/pypa/hatch/issues/1054
 [tool.hatch.build.targets.wheel]
-packages = ["pygments"]
+packages = ["pygments_tldr"]
 
 [tool.hatch.version]
-path = "pygments/__init__.py"
+path = "pygments_tldr/__init__.py"
 
 [tool.ruff]
 target-version = "py38"

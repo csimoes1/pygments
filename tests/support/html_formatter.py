@@ -1,4 +1,4 @@
-from pygments.formatters import HtmlFormatter
+from pygments_tldr.formatters import HtmlFormatter
 
 
 class HtmlFormatterWrapper(HtmlFormatter):

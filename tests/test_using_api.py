@@ -8,8 +8,8 @@
 
 from pytest import raises
 
-from pygments.lexer import using, bygroups, this, RegexLexer
-from pygments.token import String, Text, Keyword
+from pygments_tldr.lexer import using, bygroups, this, RegexLexer
+from pygments_tldr.token import String, Text, Keyword
 
 
 class MyLexer(RegexLexer):

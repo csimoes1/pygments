@@ -8,8 +8,8 @@
 
 import pytest
 
-from pygments.lexers import CoffeeScriptLexer
-from pygments.token import Token
+from pygments_tldr.lexers import CoffeeScriptLexer
+from pygments_tldr.token import Token
 
 COFFEE_SLASH_GOLDEN = [
     # input_str, slashes_are_regex_here

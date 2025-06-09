@@ -3,8 +3,8 @@ from io import StringIO
 
 import pytest
 
-from pygments.formatters import HtmlFormatter
-from pygments.lexers import PythonLexer
+from pygments_tldr.formatters import HtmlFormatter
+from pygments_tldr.lexers import PythonLexer
 
 from .support import structural_diff
 

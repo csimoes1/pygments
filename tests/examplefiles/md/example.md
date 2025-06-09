@@ -57,7 +57,7 @@ this sentence @tweets a person about a #topic.
 some other text
 
 ```python
-from pygments import token
+from pygments_tldr import token
 # comment
 ```
 

@@ -10,8 +10,8 @@ import time
 
 import pytest
 
-from pygments.token import Keyword, Name, String, Text
-from pygments.lexers.perl import PerlLexer
+from pygments_tldr.token import Keyword, Name, String, Text
+from pygments_tldr.lexers.perl import PerlLexer
 
 
 @pytest.fixture(scope='module')

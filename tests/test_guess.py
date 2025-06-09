@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from pygments.lexers import (
+from pygments_tldr.lexers import (
     _fn_matches,
     find_lexer_class_by_name,
     get_lexer_by_name,
     guess_lexer,
 )
-from pygments.lexers.basic import CbmBasicV2Lexer
-from pygments.lexers.ecl import ECLLexer
+from pygments_tldr.lexers.basic import CbmBasicV2Lexer
+from pygments_tldr.lexers.ecl import ECLLexer
 
 TESTDIR = Path(__file__).resolve().parent
 

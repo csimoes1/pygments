@@ -1,6 +1,6 @@
 # pygments.lexers.python (as CustomLexer) for test_cmdline.py
 
-from pygments.lexers import PythonLexer
+from pygments_tldr.lexers import PythonLexer
 
 
 class CustomLexer(PythonLexer):

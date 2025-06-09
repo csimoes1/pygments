@@ -1,8 +1,8 @@
 import unittest
 import textwrap
 
-from pygments.lexers import GraphQLLexer
-from pygments.token import (
+from pygments_tldr.lexers import GraphQLLexer
+from pygments_tldr.token import (
     Error,
     Keyword,
     Name,

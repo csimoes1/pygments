@@ -6,7 +6,7 @@
     :license: BSD, see LICENSE for details.
 """
 
-from pygments import modeline
+from pygments_tldr import modeline
 
 
 def test_modelines():

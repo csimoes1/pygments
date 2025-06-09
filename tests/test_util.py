@@ -8,7 +8,7 @@
 
 from pytest import raises
 
-from pygments import util, console
+from pygments_tldr import util, console
 
 
 class FakeLexer:

@@ -12,8 +12,8 @@
 import json
 import os
 
-import pygments.styles
-import pygments.token
+import pygments_tldr.styles
+import pygments_tldr.token
 import wcag_contrast_ratio
 
 JSON_FILENAME = os.path.join(os.path.dirname(__file__), "min_contrasts.json")
@@ -42,13 +42,13 @@ def get_style_contrasts(style_cls):
             ttype,
         )
         for ttype, style in style_cls.list_styles()
-        if ttype != pygments.token.Whitespace
+        if ttype != pygments_tldr.token.Whitespace
     ]
 
 
 def builtin_styles():
-    for style_name in pygments.styles.STYLE_MAP:
-        yield (style_name, pygments.styles.get_style_by_name(style_name))
+    for style_name in pygments_tldr.styles.STYLE_MAP:
+        yield (style_name, pygments_tldr.styles.get_style_by_name(style_name))
 
 
 def min_contrasts():
@@ -71,8 +71,8 @@ def test_contrasts(fail_if_improved=True):
     with open(JSON_FILENAME, encoding="utf-8") as f:
         previous_contrasts = json.load(f)
 
-    for style_name in pygments.styles.STYLE_MAP:
-        style = pygments.styles.get_style_by_name(style_name)
+    for style_name in pygments_tldr.styles.STYLE_MAP:
+        style = pygments_tldr.styles.get_style_by_name(style_name)
         contrasts = get_style_contrasts(style)
         min_contrast = min([x[0] for x in contrasts])
 

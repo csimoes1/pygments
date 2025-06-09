@@ -9,7 +9,7 @@
 import re
 import random
 
-from pygments import unistring as uni
+from pygments_tldr import unistring as uni
 
 
 def test_cats_exist_and_compilable():

@@ -8,9 +8,9 @@
 
 import pytest
 
-from pygments.lexers.sql import MySqlLexer
+from pygments_tldr.lexers.sql import MySqlLexer
 
-from pygments.token import Comment, Keyword, Literal, Name, Number, Operator, \
+from pygments_tldr.token import Comment, Keyword, Literal, Name, Number, Operator, \
     Punctuation, String, Whitespace
 
 

@@ -9,14 +9,14 @@
 import re
 from io import StringIO
 
-from pygments.lexers.sql import PlPgsqlLexer
-from pygments.formatters import TerminalFormatter, Terminal256Formatter, \
+from pygments_tldr.lexers.sql import PlPgsqlLexer
+from pygments_tldr.formatters import TerminalFormatter, Terminal256Formatter, \
     HtmlFormatter, LatexFormatter
 
-from pygments.style import Style
-from pygments.token import Token
-from pygments.lexers import Python3Lexer
-from pygments import highlight
+from pygments_tldr.style import Style
+from pygments_tldr.token import Token
+from pygments_tldr.lexers import Python3Lexer
+from pygments_tldr import highlight
 
 DEMO_TEXT = '''\
 -- comment

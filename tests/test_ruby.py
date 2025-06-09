@@ -7,8 +7,8 @@
 """
 
 import pytest
-from pygments.token import Name
-from pygments.lexers.ruby import RubyLexer
+from pygments_tldr.token import Name
+from pygments_tldr.lexers.ruby import RubyLexer
 
 
 @pytest.fixture(scope='module')

@@ -14,10 +14,10 @@ from textwrap import dedent
 
 import pytest
 
-from pygments.formatters import LatexFormatter
-from pygments.formatters.latex import LatexEmbeddedLexer
-from pygments.lexers import PythonLexer, PythonConsoleLexer
-from pygments.token import Token
+from pygments_tldr.formatters import LatexFormatter
+from pygments_tldr.formatters.latex import LatexEmbeddedLexer
+from pygments_tldr.lexers import PythonLexer, PythonConsoleLexer
+from pygments_tldr.token import Token
 
 TESTDIR = path.dirname(path.abspath(__file__))
 TESTFILE = path.join(TESTDIR, 'test_latex_formatter.py')

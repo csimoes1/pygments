@@ -8,8 +8,8 @@
 
 import pytest
 
-from pygments.token import Text, Whitespace
-from pygments.lexer import RegexLexer, default
+from pygments_tldr.token import Text, Whitespace
+from pygments_tldr.lexer import RegexLexer, default
 
 
 @pytest.fixture(scope='module')

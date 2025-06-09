@@ -17,7 +17,7 @@ from os import path
 import pytest
 from pytest import raises
 
-from pygments import cmdline, highlight
+from pygments_tldr import cmdline, highlight
 
 TESTDIR = path.dirname(path.abspath(__file__))
 TESTFILE = path.join(TESTDIR, 'test_cmdline.py')
@@ -81,8 +81,8 @@ def check_failure(*cmdline, **kwds):
 
 def test_normal():
     # test that cmdline gives the same output as library api
-    from pygments.lexers import PythonLexer
-    from pygments.formatters import HtmlFormatter
+    from pygments_tldr.lexers import PythonLexer
+    from pygments_tldr.formatters import HtmlFormatter
     filename = TESTFILE
     with open(filename, 'rb') as fp:
         code = fp.read()

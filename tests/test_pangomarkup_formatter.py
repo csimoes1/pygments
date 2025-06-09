@@ -8,9 +8,9 @@
 
 import re
 
-from pygments import highlight
-from pygments.formatters import PangoMarkupFormatter
-from pygments.lexers import JavascriptLexer
+from pygments_tldr import highlight
+from pygments_tldr.formatters import PangoMarkupFormatter
+from pygments_tldr.lexers import JavascriptLexer
 
 INPUT = r"""
 function foobar(a, b) {

@@ -21,11 +21,11 @@ if os.path.isdir(os.path.join(srcpath, 'pygments')):
     sys.path.insert(0, srcpath)
 
 # ruff: noqa: E402
-from pygments.lexer import ExtendedRegexLexer, LexerContext
-from pygments.lexers import get_lexer_by_name, find_lexer_class, \
+from pygments_tldr.lexer import ExtendedRegexLexer, LexerContext
+from pygments_tldr.lexers import get_lexer_by_name, find_lexer_class, \
     find_lexer_class_for_filename, guess_lexer
-from pygments.token import Error, Text, _TokenType
-from pygments.cmdline import _parse_options
+from pygments_tldr.token import Error, Text, _TokenType
+from pygments_tldr.cmdline import _parse_options
 
 
 class DebuggingRegexLexer(ExtendedRegexLexer):

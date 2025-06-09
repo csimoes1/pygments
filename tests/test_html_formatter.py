@@ -14,10 +14,10 @@ from os import path
 
 import pytest
 
-from pygments.formatters import HtmlFormatter, NullFormatter
-from pygments.formatters.html import escape_html
-from pygments.lexers import PythonLexer
-from pygments.style import Style
+from pygments_tldr.formatters import HtmlFormatter, NullFormatter
+from pygments_tldr.formatters.html import escape_html
+from pygments_tldr.lexers import PythonLexer
+from pygments_tldr.style import Style
 
 TESTDIR = path.dirname(path.abspath(__file__))
 TESTFILE = path.join(TESTDIR, 'test_html_formatter.py')

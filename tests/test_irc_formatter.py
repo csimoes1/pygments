@@ -8,8 +8,8 @@
 
 from io import StringIO
 
-from pygments.lexers import PythonLexer
-from pygments.formatters import IRCFormatter
+from pygments_tldr.lexers import PythonLexer
+from pygments_tldr.formatters import IRCFormatter
 
 tokensource = list(PythonLexer().get_tokens("lambda x: 123"))
 newlinetokensource = list(PythonLexer().get_tokens("from \\\n\\\n    os import  path\n"))

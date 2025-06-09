@@ -1,6 +1,6 @@
 import re
 
-from pygments.util import format_lines
+from pygments_tldr.util import format_lines
 
 r_line = re.compile(r"^(syn keyword vimCommand contained|syn keyword vimOption "
                     r"contained|syn keyword vimAutoEvent contained)\s+(.*)")
