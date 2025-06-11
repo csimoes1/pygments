@@ -234,14 +234,107 @@ class TLDRFormatter(Formatter):
                 elif ttype == Name and value in ('String', 'Integer', 'Boolean', 'List', 'Dict', 'Array'):
                     return_types.append(value)
 
-        # Look for Name.Function token (our primary detection method)
+        # Look for function definition patterns
         ttype, value = tokens[i]
+        is_arrow_function = False
+        
+        # Method 1: Look for Name.Function token (Python, some other languages)
         if ttype == Name.Function or ttype == Name.Function.Magic:
             # High confidence this is a function definition
             function_name = value
             found_name = True
-            logging.debug(f"Found function definition: {function_name}")
+            logging.debug(f"Found function definition (Name.Function): {function_name}")
             i += 1
+        
+        # Method 2: Look for JavaScript/TypeScript function patterns
+        elif ttype == Keyword.Declaration and value == 'function':
+            # Look for the function name after the 'function' keyword
+            i += 1
+            # Skip whitespace
+            while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                i += 1
+            
+            if i < len(tokens):
+                next_ttype, next_value = tokens[i]
+                if next_ttype in (Name.Other, Name):
+                    function_name = next_value
+                    found_name = True
+                    logging.debug(f"Found function definition (JS function): {function_name}")
+                    i += 1
+        
+        # Method 2b: Look for export function patterns
+        elif ttype == Keyword and value == 'export':
+            # Look ahead for 'function' keyword
+            temp_i = i + 1
+            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                temp_i += 1
+            
+            if temp_i < len(tokens) and tokens[temp_i][0] == Keyword.Declaration and tokens[temp_i][1] == 'function':
+                # Found export function, look for the function name
+                temp_i += 1
+                while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                    temp_i += 1
+                
+                if temp_i < len(tokens) and tokens[temp_i][0] in (Name.Other, Name):
+                    function_name = tokens[temp_i][1]
+                    found_name = True
+                    logging.debug(f"Found export function definition: {function_name}")
+                    i = temp_i + 1
+        
+        # Method 3: Look for const/let/var arrow functions
+        elif ttype in (Keyword.Declaration, Keyword) and value in ('const', 'let', 'var'):
+            # Look ahead for arrow function pattern: const name = (...) => {...}
+            temp_i = i + 1
+            potential_name = ""
+            
+            # Skip whitespace and get the name
+            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                temp_i += 1
+            if temp_i < len(tokens) and tokens[temp_i][0] in (Name.Other, Name):
+                potential_name = tokens[temp_i][1]
+                temp_i += 1
+            
+            # Look for = ... => pattern
+            found_arrow = False
+            paren_depth = 0
+            while temp_i < len(tokens) and temp_i < i + 20:  # Limit search range
+                temp_ttype, temp_value = tokens[temp_i]
+                if temp_value == '=' and paren_depth == 0:
+                    # Found assignment, look for arrow function
+                    temp_i += 1
+                    while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                        temp_i += 1
+                    
+                    # Check for different arrow function patterns
+                    arrow_start = temp_i
+                    while temp_i < len(tokens) and temp_i < arrow_start + 10:
+                        temp_ttype, temp_value = tokens[temp_i]
+                        if temp_value == '=>':
+                            found_arrow = True
+                            break
+                        elif temp_value == '(':
+                            paren_depth += 1
+                        elif temp_value == ')':
+                            paren_depth -= 1
+                        temp_i += 1
+                    break
+                elif temp_value == '(':
+                    paren_depth += 1
+                elif temp_value == ')':
+                    paren_depth -= 1
+                temp_i += 1
+            
+            if found_arrow and potential_name:
+                function_name = potential_name
+                found_name = True
+                is_arrow_function = True
+                logging.debug(f"Found arrow function definition: {function_name}")
+                # Position after the name
+                i += 1
+                while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                    i += 1
+                if i < len(tokens) and tokens[i][0] in (Name.Other, Name):
+                    i += 1
 
             # Look forward for return type annotations (like Python type hints: -> int)
             temp_i = i
@@ -280,7 +373,85 @@ class TLDRFormatter(Formatter):
         access_modifier = ' '.join(access_modifiers) if access_modifiers else None
         return_type = ' '.join(return_types) if return_types else None
 
-        # Look for opening parenthesis to confirm it's a function
+        # For arrow functions, look for the parameter pattern differently
+        if is_arrow_function:
+            # This is an arrow function, extract parameters differently
+            temp_i = i
+            while temp_i < len(tokens):
+                temp_ttype, temp_value = tokens[temp_i]
+                if temp_value == '=':
+                    temp_i += 1
+                    while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                        temp_i += 1
+                    
+                    # Look for parameter pattern: () or (param1, param2) or param
+                    if temp_i < len(tokens) and tokens[temp_i][1] == '(':
+                        # Extract parameters from parentheses
+                        paren_count = 1
+                        temp_i += 1
+                        param_tokens = []
+                        
+                        while temp_i < len(tokens) and paren_count > 0:
+                            temp_ttype, temp_value = tokens[temp_i]
+                            if temp_value == '(':
+                                paren_count += 1
+                            elif temp_value == ')':
+                                paren_count -= 1
+                            
+                            if paren_count > 0:
+                                param_tokens.append((temp_ttype, temp_value))
+                            temp_i += 1
+                        
+                        parameters = ''.join(token[1] for token in param_tokens).strip()
+                        parameters = ' '.join(parameters.split())
+                        
+                        # Look for the arrow
+                        while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                            temp_i += 1
+                        if temp_i < len(tokens) and tokens[temp_i][1] == '=>':
+                            return True, function_name, parameters, temp_i, access_modifier, return_type
+                    else:
+                        # Single parameter without parentheses
+                        param_start = temp_i
+                        while temp_i < len(tokens) and tokens[temp_i][1] != '=>':
+                            temp_i += 1
+                        if temp_i < len(tokens):
+                            param_tokens = tokens[param_start:temp_i]
+                            parameters = ''.join(token[1] for token in param_tokens).strip()
+                            parameters = ' '.join(parameters.split())
+                            return True, function_name, parameters, temp_i, access_modifier, return_type
+                    break
+                temp_i += 1
+        
+        # Look for opening parenthesis to confirm it's a function (traditional functions)
+        # First, skip over any generic type parameters (e.g., <T>)
+        generic_start = i
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '<':
+                # Skip over generic type parameters
+                angle_count = 1
+                i += 1
+                while i < len(tokens) and angle_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '<':
+                            angle_count += 1
+                        elif value == '>':
+                            angle_count -= 1
+                    i += 1
+                break
+            elif ttype == Punctuation and value == '(':
+                break
+            elif ttype not in (Whitespace,):
+                # Skip over other tokens until we find ( or <
+                i += 1
+                if i >= len(tokens):
+                    break
+            else:
+                i += 1
+
+        # Now look for the opening parenthesis
         while i < len(tokens):
             ttype, value = tokens[i]
             if ttype == Punctuation and value == '(':
@@ -308,10 +479,26 @@ class TLDRFormatter(Formatter):
                 # Clean up parameters - remove newlines and extra spaces
                 parameters = ' '.join(parameters.split())
 
-                # Continue until we find the end of the signature (colon, brace, etc.)
+                # Look for TypeScript return type annotation (: Type)
+                return_type_tokens = []
                 while i < len(tokens):
                     ttype, value = tokens[i]
-                    if value in (':', '{', ';') or value == '\n':
+                    if ttype == Punctuation and value == ':':
+                        # Found return type annotation, collect tokens until { or ;
+                        i += 1
+                        while i < len(tokens):
+                            ttype, value = tokens[i]
+                            if value in ('{', ';') or value == '\n':
+                                break
+                            return_type_tokens.append((ttype, value))
+                            i += 1
+                        
+                        if return_type_tokens:
+                            return_type = ''.join(token[1] for token in return_type_tokens).strip()
+                            return_type = ' '.join(return_type.split())
+                        
+                        return True, function_name, parameters, i, access_modifier, return_type
+                    elif value in ('{', ';') or value == '\n':
                         return True, function_name, parameters, i, access_modifier, return_type
                     i += 1
 
