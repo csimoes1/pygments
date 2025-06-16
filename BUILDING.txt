@@ -1,0 +1,4 @@
+# from pygments_tldr top level directory run:
+rm -rf dist/*
+python -m build
+python -m twine upload dist/*
