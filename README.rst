@@ -1,7 +1,7 @@
-Welcome to Pygments-tldr
+Welcome to pygments-tldr
 ===================
 
-This is the source of Pygments-tldr.  This is a fork of the excellent pygments project that can be found at
+This is the source of pygments-tldr.  This is a fork of the excellent pygments project that can be found at
 https://pygments.org/.  We created this fork to support a new type of formatter we have added to the pygments
 project that helps us extract function signatures from multiple programming language files.  We have tried to
 contain our impactful changes to the file ''pygments_tldr/formatters/tldr.py''.  Everything else we will strive to keep
