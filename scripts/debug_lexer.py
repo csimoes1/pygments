@@ -17,7 +17,7 @@ import struct
 
 # always prefer Pygments from source if exists
 srcpath = os.path.join(os.path.dirname(__file__), '..')
-if os.path.isdir(os.path.join(srcpath, 'pygments')):
+if os.path.isdir(os.path.join(srcpath, 'pygments_tldr')):
     sys.path.insert(0, srcpath)
 
 # ruff: noqa: E402
