@@ -684,6 +684,9 @@ class TLDRFormatter(Formatter):
         # Method 11a: Traditional Swift functions
         if ttype == Keyword.Declaration and value == 'func':
             return self._extract_swift_function_declaration(tokens, i, access_modifiers)
+        # Handle case where 'func' is tokenized as Name.Class (after 'class' keyword)
+        elif ttype == Name.Class and value == 'func':
+            return self._extract_swift_function_declaration(tokens, i, access_modifiers)
         
         # Method 11b: Swift initializers
         elif ttype == Keyword.Declaration and value == 'init':
@@ -1618,7 +1621,7 @@ class TLDRFormatter(Formatter):
         
         if i < len(tokens):
             ttype, value = tokens[i]
-            if ttype in (Name.Other, Name, Name.Property):
+            if ttype in (Name.Other, Name, Name.Property, Name.Variable):
                 property_name = value
                 i += 1
                 
