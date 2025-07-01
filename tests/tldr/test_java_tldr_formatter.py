@@ -11,7 +11,10 @@ import logging
 import re
 from io import StringIO
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    pytest = None
 
 from pygments_tldr import highlight
 from pygments_tldr.lexers.jvm import JavaLexer
@@ -147,14 +150,28 @@ class TestJavaTLDRFormatter:
             if line:  # Skip empty lines
                 # Look for function names in the output
                 for expected_func in EXPECTED_FUNCTIONS:
-                    if expected_func in line:
+                    if expected_func in line and expected_func not in detected_functions:
                         detected_functions.append(expected_func)
-                        break
+        
+        # Find missing functions
+        missing_functions = [func for func in EXPECTED_FUNCTIONS if func not in detected_functions]
         
         # Log the results for debugging
         logging.debug(f"TLDR Formatter output:\n{result}")
         logging.debug(f"Detected functions: {detected_functions}")
         logging.debug(f"Expected functions: {EXPECTED_FUNCTIONS}")
+        
+        # Print detailed results
+        print(f"Successfully detected {len(detected_functions)}/{EXPECTED_FUNCTION_COUNT} Java functions")
+        print(f"Detected functions: {detected_functions}")
+        print(f"Missing functions: {missing_functions}")
+        
+        # Print basic debugging info for missing functions
+        for missing_func in missing_functions:
+            if missing_func in result:
+                print(f"  ** {missing_func} IS in the output but not detected by search logic")
+            else:
+                print(f"  ** {missing_func} is NOT in the output")
         
         # Verify we detected functions
         assert len(detected_functions) > 0, f"No functions detected in output: {result}"
@@ -162,8 +179,6 @@ class TestJavaTLDRFormatter:
         # Verify we detected most expected functions (allowing some variance in detection logic)
         detection_ratio = len(detected_functions) / EXPECTED_FUNCTION_COUNT
         assert detection_ratio >= 0.5, f"Detection ratio too low: {detection_ratio:.2f} ({len(detected_functions)}/{EXPECTED_FUNCTION_COUNT})"
-        
-        print(f"Successfully detected {len(detected_functions)}/{EXPECTED_FUNCTION_COUNT} Java functions")
     
     def test_java_constructor_detection(self):
         """Test that Java constructors are properly detected"""
