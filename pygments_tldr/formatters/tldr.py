@@ -319,6 +319,17 @@ class TLDRFormatter(Formatter):
         elif ttype in (Keyword.Declaration, Keyword) and value in ('const', 'let', 'var'):
             return self._extract_js_arrow_function(tokens, i)
         
+        # Method 2d: Class methods and object methods (Name.Other followed by parentheses)
+        elif ttype in (Name.Other, Name.Function) and i + 1 < len(tokens):
+            # Look ahead to see if this is followed by parentheses (indicating a method)
+            next_idx = i + 1
+            while next_idx < len(tokens) and tokens[next_idx][0] in (Whitespace,):
+                next_idx += 1
+            if next_idx < len(tokens) and tokens[next_idx][1] == '(':
+                function_name = value
+                logging.debug(f"Found JavaScript method: {function_name}")
+                return self._extract_js_method_parameters(tokens, next_idx, function_name, i)
+        
         return False, None, None, start_idx, None, None
 
     def _detect_typescript_function(self, tokens, start_idx):
@@ -770,18 +781,29 @@ class TLDRFormatter(Formatter):
 
     def _extract_js_function_declaration(self, tokens, i):
         """
-        Extract JavaScript function declaration: function name(...) { }
+        Extract JavaScript function declaration: function name(...) { } or function* name(...) { }
         """
         # Skip 'function' keyword
         i += 1
         while i < len(tokens) and tokens[i][0] in (Whitespace,):
             i += 1
         
+        # Handle generator functions (function*)
+        is_generator = False
+        if i < len(tokens) and tokens[i][0] == Operator and tokens[i][1] == '*':
+            is_generator = True
+            i += 1
+            while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                i += 1
+        
         if i < len(tokens):
             next_ttype, next_value = tokens[i]
             if next_ttype in (Name.Other, Name):
                 function_name = next_value
-                logging.debug(f"Found JS function definition: {function_name}")
+                if is_generator:
+                    logging.debug(f"Found JS generator function definition: {function_name}")
+                else:
+                    logging.debug(f"Found JS function definition: {function_name}")
                 i += 1
                 return self._extract_function_parameters(tokens, i, function_name, i)
         
@@ -915,6 +937,47 @@ class TLDRFormatter(Formatter):
             temp_i += 1
         
         return False, None, None, start_i, None, None
+
+    def _extract_js_method_parameters(self, tokens, paren_idx, function_name, start_idx):
+        """
+        Extract parameters from JavaScript class methods and object methods.
+        Handles: method() {}, async method() {}, static method() {}, get/set methods.
+        """
+        # Extract parameters from parentheses
+        i = paren_idx
+        if i < len(tokens) and tokens[i][1] == '(':
+            paren_count = 1
+            i += 1
+            param_tokens = []
+            
+            while i < len(tokens) and paren_count > 0:
+                ttype, value = tokens[i]
+                if ttype == Punctuation:
+                    if value == '(':
+                        paren_count += 1
+                    elif value == ')':
+                        paren_count -= 1
+                
+                if paren_count > 0:
+                    param_tokens.append((ttype, value))
+                i += 1
+            
+            # Build parameter string
+            parameters = ''.join(token[1] for token in param_tokens).strip()
+            parameters = ' '.join(parameters.split())  # Normalize whitespace
+            
+            # Look for access modifiers before the method name
+            access_modifier = None
+            for j in range(max(0, start_idx - 5), start_idx):
+                if j < len(tokens):
+                    ttype, value = tokens[j]
+                    if ttype == Keyword and value in ('static', 'async', 'get', 'set'):
+                        access_modifier = value if access_modifier is None else f"{access_modifier} {value}"
+            
+            logging.debug(f"Found JavaScript method: {function_name}({parameters})")
+            return True, function_name, f"({parameters})", i, access_modifier, None
+        
+        return False, None, None, start_idx, None, None
 
     def _extract_java_method_parameters(self, tokens, i, function_name, start_idx, access_modifiers, return_types, is_constructor):
         """
