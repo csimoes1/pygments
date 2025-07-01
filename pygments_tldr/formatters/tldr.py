@@ -210,8 +210,10 @@ class TLDRFormatter(Formatter):
         # Map language names to categories
         if lang_name in ('python', 'py'):
             return 'python'
-        elif lang_name in ('javascript', 'js', 'typescript', 'ts', 'jsx', 'tsx'):
+        elif lang_name in ('javascript', 'js', 'jsx'):
             return 'javascript'
+        elif lang_name in ('typescript', 'ts', 'tsx'):
+            return 'typescript'
         elif lang_name in ('java'):
             return 'java'
         elif lang_name in ('c#', 'csharp'):
@@ -226,6 +228,8 @@ class TLDRFormatter(Formatter):
             return 'php'
         elif lang_name in ('ruby', 'rb'):
             return 'ruby'
+        elif lang_name in ('swift'):
+            return 'swift'
         else:
             return 'generic'
 
@@ -245,6 +249,8 @@ class TLDRFormatter(Formatter):
             return self._detect_python_function(tokens, start_idx)
         elif language == 'javascript':
             return self._detect_javascript_function(tokens, start_idx)
+        elif language == 'typescript':
+            return self._detect_typescript_function(tokens, start_idx)
         elif language == 'java':
             return self._detect_java_function(tokens, start_idx)
         elif language == 'csharp':
@@ -259,6 +265,8 @@ class TLDRFormatter(Formatter):
             return self._detect_php_function(tokens, start_idx)
         elif language == 'ruby':
             return self._detect_ruby_function(tokens, start_idx)
+        elif language == 'swift':
+            return self._detect_swift_function(tokens, start_idx)
         else:
             return self._detect_generic_function(tokens, start_idx)
 
@@ -313,9 +321,79 @@ class TLDRFormatter(Formatter):
         
         return False, None, None, start_idx, None, None
 
+    def _detect_typescript_function(self, tokens, start_idx):
+        """
+        Method 3: Detect TypeScript function definitions.
+        Handles: function declarations, arrow functions, class methods, interfaces, generics, type annotations.
+        """
+        i = start_idx
+        access_modifiers = []
+        return_types = []
+        is_interface_method = False
+        is_abstract = False
+        
+        # Skip whitespace at the beginning
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        # Look backwards for TypeScript-specific modifiers and keywords
+        # TypeScript: [export] [access_modifier] [static] [async] [abstract] function/method
+        # Interfaces: methodName(params): returnType;
+        # Classes: [access] [static] [async] methodName(params): returnType
+        
+        # Collect TypeScript-specific modifiers by looking back
+        lookback_start = max(0, start_idx - 25)
+        for j in range(lookback_start, i):
+            if j < len(tokens):
+                ttype, value = tokens[j]
+                if ttype == Keyword and value in ('public', 'private', 'protected', 'static', 'readonly', 'abstract', 'async', 'export', 'default'):
+                    access_modifiers.append(value)
+                    if value == 'abstract':
+                        is_abstract = True
+                elif ttype == Keyword and value in ('interface', 'declare'):
+                    is_interface_method = True
+        
+        # Look for TypeScript function/method patterns
+        ttype, value = tokens[i]
+        function_name = ""
+        
+        # Method 3a: Traditional TypeScript function declarations
+        if ttype == Keyword.Declaration and value == 'function':
+            return self._extract_typescript_function_declaration(tokens, i, access_modifiers, is_abstract)
+        
+        # Method 3b: TypeScript export function patterns
+        elif ttype == Keyword and value == 'export':
+            return self._extract_typescript_export_function(tokens, i)
+        
+        # Method 3c: TypeScript arrow functions (const/let/var with type annotations)
+        elif ttype in (Keyword.Declaration, Keyword) and value in ('const', 'let', 'var'):
+            return self._extract_typescript_arrow_function(tokens, i)
+        
+        # Method 3d: TypeScript class method or interface method signatures
+        elif ttype in (Name.Function, Name.Other, Name) and i + 1 < len(tokens):
+            # Look ahead to see if this looks like a TypeScript method signature
+            temp_i = i + 1
+            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                temp_i += 1
+            
+            if temp_i < len(tokens):
+                next_token = tokens[temp_i][1]
+                
+                # TypeScript method signature patterns
+                if next_token in ('(', '<'):  # Method call or generic method
+                    function_name = value
+                    logging.debug(f"Found TypeScript method/function: {function_name}")
+                    i += 1
+                    return self._extract_typescript_method_parameters(tokens, i, function_name, start_idx, access_modifiers, is_interface_method, is_abstract)
+        
+        return False, None, None, start_idx, None, None
+
     def _detect_java_function(self, tokens, start_idx):
         """
-        Method 3: Detect Java method definitions.
+        Method 4: Detect Java method definitions.
         Handles: public/private/protected methods, static methods, constructors.
         """
         i = start_idx
@@ -373,7 +451,7 @@ class TLDRFormatter(Formatter):
 
     def _detect_csharp_function(self, tokens, start_idx):
         """
-        Method 4: Detect C# method definitions.
+        Method 5: Detect C# method definitions.
         Handles: access modifiers, properties, async methods, generic methods, operators.
         """
         i = start_idx
@@ -450,13 +528,13 @@ class TLDRFormatter(Formatter):
 
     def _detect_c_family_function(self, tokens, start_idx):
         """
-        Method 5: Detect C/C++ function definitions.
+        Method 6: Detect C/C++ function definitions.
         """
         return self._detect_generic_function(tokens, start_idx)
 
     def _detect_rust_function(self, tokens, start_idx):
         """
-        Method 6: Detect Rust function definitions (fn keyword).
+        Method 7: Detect Rust function definitions (fn keyword).
         """
         i = start_idx
         while i < len(tokens) and tokens[i][0] in (Whitespace,):
@@ -484,7 +562,7 @@ class TLDRFormatter(Formatter):
 
     def _detect_go_function(self, tokens, start_idx):
         """
-        Method 7: Detect Go function definitions (func keyword).
+        Method 8: Detect Go function definitions (func keyword).
         """
         i = start_idx
         while i < len(tokens) and tokens[i][0] in (Whitespace,):
@@ -512,7 +590,7 @@ class TLDRFormatter(Formatter):
 
     def _detect_php_function(self, tokens, start_idx):
         """
-        Method 8: Detect PHP function definitions.
+        Method 9: Detect PHP function definitions.
         """
         i = start_idx
         while i < len(tokens) and tokens[i][0] in (Whitespace,):
@@ -540,7 +618,7 @@ class TLDRFormatter(Formatter):
 
     def _detect_ruby_function(self, tokens, start_idx):
         """
-        Method 9: Detect Ruby function definitions (def keyword).
+        Method 10: Detect Ruby function definitions (def keyword).
         """
         i = start_idx
         while i < len(tokens) and tokens[i][0] in (Whitespace,):
@@ -563,6 +641,68 @@ class TLDRFormatter(Formatter):
                     logging.debug(f"Found Ruby function definition: {function_name}")
                     i += 1
                     return self._extract_function_parameters(tokens, i, function_name, start_idx)
+        
+        return False, None, None, start_idx, None, None
+
+    def _detect_swift_function(self, tokens, start_idx):
+        """
+        Method 11: Detect Swift function definitions.
+        Handles: func keyword, init methods, computed properties, closures.
+        """
+        i = start_idx
+        access_modifiers = []
+        return_types = []
+        is_initializer = False
+        is_computed_property = False
+        
+        # Skip whitespace at the beginning
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        # Look backwards for Swift access modifiers and attributes
+        # Swift functions: [access_level] [mutating] [class/static] func name(params) -> ReturnType
+        # Swift init: [access_level] [convenience] init(params)
+        # Swift computed properties: [access_level] var name: Type { get set }
+        
+        # Collect access modifiers and attributes by looking back
+        lookback_start = max(0, start_idx - 20)
+        for j in range(lookback_start, i):
+            if j < len(tokens):
+                ttype, value = tokens[j]
+                if ttype == Keyword and value in ('public', 'private', 'internal', 'fileprivate', 'open', 'static', 'class', 'final', 'override', 'mutating', 'nonmutating', 'convenience', 'required', 'lazy', 'weak', 'unowned'):
+                    access_modifiers.append(value)
+                elif ttype == Name and value.startswith('@'):  # Swift attributes like @objc, @available
+                    access_modifiers.append(value)
+        
+        # Look for function/init/property keywords
+        ttype, value = tokens[i]
+        function_name = ""
+        
+        # Method 11a: Traditional Swift functions
+        if ttype == Keyword.Declaration and value == 'func':
+            return self._extract_swift_function_declaration(tokens, i, access_modifiers)
+        
+        # Method 11b: Swift initializers
+        elif ttype == Keyword.Declaration and value == 'init':
+            is_initializer = True
+            function_name = 'init'
+            logging.debug(f"Found Swift initializer: {function_name}")
+            i += 1
+            return self._extract_swift_initializer_parameters(tokens, i, function_name, start_idx, access_modifiers)
+        
+        # Method 11c: Swift computed properties and subscripts
+        elif ttype == Keyword.Declaration and value in ('var', 'let'):
+            return self._extract_swift_property_or_subscript(tokens, i, access_modifiers, value)
+        
+        # Method 11d: Swift subscripts
+        elif ttype == Keyword.Declaration and value == 'subscript':
+            function_name = 'subscript'
+            logging.debug(f"Found Swift subscript: {function_name}")
+            i += 1
+            return self._extract_swift_subscript_parameters(tokens, i, function_name, start_idx, access_modifiers)
         
         return False, None, None, start_idx, None, None
 
@@ -1018,6 +1158,297 @@ class TLDRFormatter(Formatter):
         parameters = f"{{ {accessors} }}" if accessors else "{ }"
         
         return True, property_name, parameters, i, access_modifier, return_type
+
+    def _extract_typescript_function_declaration(self, tokens, i, access_modifiers, is_abstract):
+        """
+        Extract TypeScript function declaration: [export] function name<T>(params): ReturnType
+        """
+        # Skip 'function' keyword
+        i += 1
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+        
+        if i < len(tokens):
+            next_ttype, next_value = tokens[i]
+            if next_ttype in (Name.Function, Name.Other, Name):
+                function_name = next_value
+                logging.debug(f"Found TypeScript function declaration: {function_name}")
+                i += 1
+                return self._extract_typescript_method_parameters(tokens, i, function_name, i, access_modifiers, False, is_abstract)
+        
+        return False, None, None, i, None, None
+
+    def _extract_typescript_export_function(self, tokens, i):
+        """
+        Extract TypeScript export function patterns: export [default] function name() / export const name = ()
+        """
+        # Look ahead for function patterns after 'export'
+        temp_i = i + 1
+        while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+            temp_i += 1
+        
+        if temp_i < len(tokens):
+            next_ttype, next_value = tokens[temp_i]
+            
+            # export default function
+            if next_ttype == Keyword and next_value == 'default':
+                temp_i += 1
+                while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                    temp_i += 1
+                if temp_i < len(tokens) and tokens[temp_i][0] == Keyword.Declaration and tokens[temp_i][1] == 'function':
+                    return self._extract_typescript_function_declaration(tokens, temp_i, ['export', 'default'], False)
+            
+            # export function
+            elif next_ttype == Keyword.Declaration and next_value == 'function':
+                return self._extract_typescript_function_declaration(tokens, temp_i, ['export'], False)
+            
+            # export const/let arrow function
+            elif next_ttype in (Keyword.Declaration, Keyword) and next_value in ('const', 'let', 'var'):
+                return self._extract_typescript_arrow_function(tokens, temp_i, ['export'])
+        
+        return False, None, None, i, None, None
+
+    def _extract_typescript_arrow_function(self, tokens, i, extra_modifiers=[]):
+        """
+        Extract TypeScript arrow function: const name = (params): ReturnType => { }
+        """
+        # Look ahead for arrow function pattern with TypeScript type annotations
+        temp_i = i + 1
+        potential_name = ""
+        
+        # Skip whitespace and get the name
+        while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+            temp_i += 1
+        if temp_i < len(tokens) and tokens[temp_i][0] in (Name.Other, Name):
+            potential_name = tokens[temp_i][1]
+            temp_i += 1
+        
+        # Look for TypeScript type annotation and arrow pattern
+        found_arrow = False
+        type_annotation = ""
+        paren_depth = 0
+        
+        while temp_i < len(tokens) and temp_i < i + 30:  # Extended search for TypeScript
+            temp_ttype, temp_value = tokens[temp_i]
+            
+            if temp_value == '=' and paren_depth == 0:
+                # Found assignment, look for arrow function with type annotations
+                temp_i += 1
+                while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                    temp_i += 1
+                
+                # Look for arrow function patterns (including type annotations)
+                arrow_start = temp_i
+                while temp_i < len(tokens) and temp_i < arrow_start + 20:
+                    temp_ttype, temp_value = tokens[temp_i]
+                    if temp_value == '=>':
+                        found_arrow = True
+                        break
+                    elif temp_value == '(':
+                        paren_depth += 1
+                    elif temp_value == ')':
+                        paren_depth -= 1
+                        # After closing paren, look for TypeScript return type annotation
+                        if paren_depth == 0:
+                            type_start = temp_i + 1
+                            while type_start < len(tokens) and tokens[type_start][0] in (Whitespace,):
+                                type_start += 1
+                            if type_start < len(tokens) and tokens[type_start][1] == ':':
+                                # Collect return type annotation
+                                type_start += 1
+                                while type_start < len(tokens) and tokens[type_start][1] != '=>':
+                                    if tokens[type_start][0] not in (Whitespace,):
+                                        type_annotation += tokens[type_start][1]
+                                    type_start += 1
+                    temp_i += 1
+                break
+            elif temp_value == '(':
+                paren_depth += 1
+            elif temp_value == ')':
+                paren_depth -= 1
+            temp_i += 1
+        
+        if found_arrow and potential_name:
+            function_name = potential_name
+            logging.debug(f"Found TypeScript arrow function: {function_name}")
+            access_modifier = ' '.join(extra_modifiers) if extra_modifiers else None
+            return_type = type_annotation.strip() if type_annotation else None
+            return self._extract_typescript_arrow_function_parameters(tokens, i, function_name, access_modifier, return_type)
+        
+        return False, None, None, i, None, None
+
+    def _extract_typescript_method_parameters(self, tokens, i, function_name, start_idx, access_modifiers, is_interface_method, is_abstract):
+        """
+        Extract parameters from TypeScript method definitions with type annotations.
+        Handles: generics, return types, optional parameters, rest parameters.
+        """
+        access_modifier = ' '.join(access_modifiers) if access_modifiers else None
+        return_type = None
+        
+        # Skip over TypeScript generic type parameters (e.g., <T, U extends Base>)
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '<':
+                # Skip over generic type parameters with constraints
+                angle_count = 1
+                i += 1
+                while i < len(tokens) and angle_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '<':
+                            angle_count += 1
+                        elif value == '>':
+                            angle_count -= 1
+                    i += 1
+                break
+            elif ttype == Punctuation and value == '(':
+                break
+            elif ttype not in (Whitespace,):
+                i += 1
+                if i >= len(tokens):
+                    break
+            else:
+                i += 1
+
+        # Extract parameters with TypeScript type annotations
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '(':
+                # Found method signature, extract parameters
+                paren_count = 1
+                i += 1
+                param_tokens = []
+
+                while i < len(tokens) and paren_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '(':
+                            paren_count += 1
+                        elif value == ')':
+                            paren_count -= 1
+
+                    # Collect parameter tokens (exclude the closing parenthesis)
+                    if paren_count > 0:
+                        param_tokens.append((ttype, value))
+
+                    i += 1
+
+                # Extract parameter string with TypeScript types
+                parameters = ''.join(token[1] for token in param_tokens).strip()
+                parameters = ' '.join(parameters.split())
+
+                # Look for TypeScript return type annotation (: ReturnType)
+                return_type_tokens = []
+                while i < len(tokens):
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation and value == ':':
+                        # Found return type annotation
+                        i += 1
+                        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                            i += 1
+                        
+                        # Collect return type tokens until {, ;, or =>
+                        while i < len(tokens):
+                            ttype, value = tokens[i]
+                            if value in ('{', ';', '=>') or value == '\n':
+                                break
+                            return_type_tokens.append((ttype, value))
+                            i += 1
+                        
+                        if return_type_tokens:
+                            return_type = ''.join(token[1] for token in return_type_tokens).strip()
+                            return_type = ' '.join(return_type.split())
+                        break
+                    elif value in ('{', ';', '=>') or value == '\n':
+                        break
+                    i += 1
+
+                # Add TypeScript-specific information to access modifier
+                ts_info = []
+                if is_interface_method:
+                    ts_info.append('interface')
+                if is_abstract:
+                    ts_info.append('abstract')
+                
+                if ts_info:
+                    if access_modifier:
+                        access_modifier = ' '.join(ts_info) + ' ' + access_modifier
+                    else:
+                        access_modifier = ' '.join(ts_info)
+
+                return True, function_name, parameters, i, access_modifier, return_type
+            elif ttype not in (Whitespace,):
+                break
+            i += 1
+
+        return False, None, None, start_idx, None, None
+
+    def _extract_typescript_arrow_function_parameters(self, tokens, start_i, function_name, access_modifier, return_type):
+        """
+        Extract parameters from TypeScript arrow function with type annotations.
+        """
+        # Similar to JavaScript but with TypeScript type handling
+        temp_i = start_i + 1  # Skip past const/let/var
+        while temp_i < len(tokens):
+            temp_ttype, temp_value = tokens[temp_i]
+            if temp_value == '=':
+                temp_i += 1
+                while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                    temp_i += 1
+                
+                # Look for parameter pattern with TypeScript types
+                if temp_i < len(tokens) and tokens[temp_i][1] == '(':
+                    # Extract parameters from parentheses with types
+                    paren_count = 1
+                    temp_i += 1
+                    param_tokens = []
+                    
+                    while temp_i < len(tokens) and paren_count > 0:
+                        temp_ttype, temp_value = tokens[temp_i]
+                        if temp_value == '(':
+                            paren_count += 1
+                        elif temp_value == ')':
+                            paren_count -= 1
+                        
+                        if paren_count > 0:
+                            param_tokens.append((temp_ttype, temp_value))
+                        temp_i += 1
+                    
+                    parameters = ''.join(token[1] for token in param_tokens).strip()
+                    parameters = ' '.join(parameters.split())
+                    
+                    # Look for the arrow and return type
+                    while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                        temp_i += 1
+                        
+                    # TypeScript arrow functions might have return type before =>
+                    if temp_i < len(tokens) and tokens[temp_i][1] == ':':
+                        # Extract return type
+                        temp_i += 1
+                        return_type_tokens = []
+                        while temp_i < len(tokens) and tokens[temp_i][1] != '=>':
+                            if tokens[temp_i][0] not in (Whitespace,):
+                                return_type_tokens.append(tokens[temp_i])
+                            temp_i += 1
+                        if return_type_tokens:
+                            return_type = ''.join(token[1] for token in return_type_tokens).strip()
+                    
+                    if temp_i < len(tokens) and tokens[temp_i][1] == '=>':
+                        return True, function_name, parameters, temp_i, access_modifier, return_type
+                else:
+                    # Single parameter without parentheses (less common in TypeScript)
+                    param_start = temp_i
+                    while temp_i < len(tokens) and tokens[temp_i][1] != '=>':
+                        temp_i += 1
+                    if temp_i < len(tokens):
+                        param_tokens = tokens[param_start:temp_i]
+                        parameters = ''.join(token[1] for token in param_tokens).strip()
+                        parameters = ' '.join(parameters.split())
+                        return True, function_name, parameters, temp_i, access_modifier, return_type
+                break
+            temp_i += 1
+        
+        return False, None, None, start_i, None, None
 
     def _extract_swift_function_declaration(self, tokens, i, access_modifiers):
         """
