@@ -192,6 +192,43 @@ class TLDRFormatter(Formatter):
 
         return style_map.get(ttype, ('', ''))
 
+    def _detect_language(self):
+        """
+        Detect the programming language based on lexer information.
+        Returns a language category for function detection.
+        """
+        if hasattr(self, 'lexer') and self.lexer:
+            if hasattr(self.lexer, 'aliases') and self.lexer.aliases:
+                lang_name = self.lexer.aliases[0].lower()
+            elif hasattr(self.lexer, 'name'):
+                lang_name = self.lexer.name.lower()
+            else:
+                lang_name = self.lang.lower() if self.lang else 'unknown'
+        else:
+            lang_name = self.lang.lower() if self.lang else 'unknown'
+        
+        # Map language names to categories
+        if lang_name in ('python', 'py'):
+            return 'python'
+        elif lang_name in ('javascript', 'js', 'typescript', 'ts', 'jsx', 'tsx'):
+            return 'javascript'
+        elif lang_name in ('java'):
+            return 'java'
+        elif lang_name in ('c#', 'csharp'):
+            return 'csharp'
+        elif lang_name in ('c++', 'cpp', 'c'):
+            return 'c_family'
+        elif lang_name in ('rust', 'rs'):
+            return 'rust'
+        elif lang_name in ('go', 'golang'):
+            return 'go'
+        elif lang_name in ('php'):
+            return 'php'
+        elif lang_name in ('ruby', 'rb'):
+            return 'ruby'
+        else:
+            return 'generic'
+
     def _is_function_definition(self, tokens, start_idx):
         """
         Detect if the current position is the start of a function/method definition.
@@ -200,15 +237,345 @@ class TLDRFormatter(Formatter):
         if not self.highlight_functions:
             return False, None, None, start_idx, None, None
 
-        # Look for common function definition patterns
+        # Detect language first
+        language = self._detect_language()
+        
+        # Apply language-specific detection logic
+        if language == 'python':
+            return self._detect_python_function(tokens, start_idx)
+        elif language == 'javascript':
+            return self._detect_javascript_function(tokens, start_idx)
+        elif language == 'java':
+            return self._detect_java_function(tokens, start_idx)
+        elif language == 'csharp':
+            return self._detect_csharp_function(tokens, start_idx)
+        elif language == 'c_family':
+            return self._detect_c_family_function(tokens, start_idx)
+        elif language == 'rust':
+            return self._detect_rust_function(tokens, start_idx)
+        elif language == 'go':
+            return self._detect_go_function(tokens, start_idx)
+        elif language == 'php':
+            return self._detect_php_function(tokens, start_idx)
+        elif language == 'ruby':
+            return self._detect_ruby_function(tokens, start_idx)
+        else:
+            return self._detect_generic_function(tokens, start_idx)
+
+    def _detect_python_function(self, tokens, start_idx):
+        """
+        Method 1: Detect Python function definitions using Name.Function tokens.
+        """
+        i = start_idx
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        ttype, value = tokens[i]
+        
+        # Look for Name.Function token (Python)
+        if ttype == Name.Function or ttype == Name.Function.Magic:
+            function_name = value
+            logging.debug(f"Found Python function definition: {function_name}")
+            i += 1
+            
+            return self._extract_function_parameters(tokens, i, function_name, start_idx)
+        
+        return False, None, None, start_idx, None, None
+
+    def _detect_javascript_function(self, tokens, start_idx):
+        """
+        Method 2: Detect JavaScript/TypeScript function definitions.
+        Handles: function declarations, arrow functions, export functions.
+        """
+        i = start_idx
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        ttype, value = tokens[i]
+        
+        # Method 2a: Traditional function declarations
+        if ttype == Keyword.Declaration and value == 'function':
+            return self._extract_js_function_declaration(tokens, i)
+        
+        # Method 2b: Export function patterns
+        elif ttype == Keyword and value == 'export':
+            return self._extract_js_export_function(tokens, i)
+        
+        # Method 2c: Arrow functions (const/let/var)
+        elif ttype in (Keyword.Declaration, Keyword) and value in ('const', 'let', 'var'):
+            return self._extract_js_arrow_function(tokens, i)
+        
+        return False, None, None, start_idx, None, None
+
+    def _detect_java_function(self, tokens, start_idx):
+        """
+        Method 3: Detect Java method definitions.
+        Handles: public/private/protected methods, static methods, constructors.
+        """
+        i = start_idx
+        access_modifiers = []
+        return_types = []
+        is_constructor = False
+        
+        # Skip whitespace at the beginning
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        # Look backwards and forwards for Java method patterns
+        # Java methods typically have: [access_modifier] [static] [return_type] methodName(params)
+        # Constructors have: [access_modifier] ClassName(params)
+        
+        # Collect access modifiers and return types by looking back
+        lookback_start = max(0, start_idx - 15)
+        for j in range(lookback_start, i):
+            if j < len(tokens):
+                ttype, value = tokens[j]
+                if ttype == Keyword and value in ('public', 'private', 'protected', 'static', 'final', 'abstract', 'synchronized', 'native', 'strictfp'):
+                    access_modifiers.append(value)
+                elif ttype in (Keyword.Type, Name.Builtin.Type) and value in ('void', 'int', 'boolean', 'char', 'byte', 'short', 'long', 'float', 'double'):
+                    return_types.append(value)
+                elif ttype == Name and value[0].isupper():  # Likely a class type
+                    return_types.append(value)
+        
+        # Look for method name
+        ttype, value = tokens[i]
+        function_name = ""
+        
+        # Check if this is a method name (Name token followed by parentheses)
+        if ttype in (Name.Function, Name.Other, Name):
+            # Look ahead to confirm this is followed by parentheses
+            temp_i = i + 1
+            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                temp_i += 1
+            
+            if temp_i < len(tokens) and tokens[temp_i][1] == '(':
+                function_name = value
+                logging.debug(f"Found Java method definition: {function_name}")
+                
+                # Check if this might be a constructor (method name matches class name pattern)
+                if value[0].isupper() and not return_types:
+                    is_constructor = True
+                    logging.debug(f"Detected Java constructor: {function_name}")
+                
+                i += 1
+                return self._extract_java_method_parameters(tokens, i, function_name, start_idx, access_modifiers, return_types, is_constructor)
+        
+        return False, None, None, start_idx, None, None
+
+    def _detect_csharp_function(self, tokens, start_idx):
+        """
+        Method 4: Detect C# method definitions.
+        Handles: access modifiers, properties, async methods, generic methods, operators.
+        """
+        i = start_idx
+        access_modifiers = []
+        return_types = []
+        is_constructor = False
+        is_property = False
+        is_async = False
+        
+        # Skip whitespace at the beginning
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        # Look backwards and forwards for C# method patterns
+        # C# methods: [access_modifier] [static] [async] [return_type] MethodName(params)
+        # Properties: [access_modifier] [static] Type PropertyName { get; set; }
+        # Constructors: [access_modifier] ClassName(params)
+        
+        # Collect access modifiers and return types by looking back
+        lookback_start = max(0, start_idx - 20)
+        for j in range(lookback_start, i):
+            if j < len(tokens):
+                ttype, value = tokens[j]
+                if ttype == Keyword and value in ('public', 'private', 'protected', 'internal', 'static', 'virtual', 'override', 'abstract', 'sealed', 'extern', 'readonly', 'const'):
+                    access_modifiers.append(value)
+                elif ttype == Keyword and value == 'async':
+                    is_async = True
+                    access_modifiers.append(value)
+                elif ttype in (Keyword.Type, Name.Builtin.Type) and value in ('void', 'int', 'string', 'bool', 'float', 'double', 'decimal', 'char', 'byte', 'short', 'long', 'object', 'dynamic'):
+                    return_types.append(value)
+                elif ttype == Name and value[0].isupper():  # Likely a class/interface type
+                    return_types.append(value)
+        
+        # Look for method/property name
+        ttype, value = tokens[i]
+        function_name = ""
+        
+        # Check if this is a method name (Name token followed by parentheses or property)
+        if ttype in (Name.Function, Name.Other, Name, Name.Property):
+            # Look ahead to determine if this is a method, property, or constructor
+            temp_i = i + 1
+            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                temp_i += 1
+            
+            if temp_i < len(tokens):
+                next_token = tokens[temp_i][1]
+                
+                if next_token == '(':
+                    # This is a method or constructor
+                    function_name = value
+                    logging.debug(f"Found C# method definition: {function_name}")
+                    
+                    # Check if this might be a constructor
+                    if value[0].isupper() and not return_types:
+                        is_constructor = True
+                        logging.debug(f"Detected C# constructor: {function_name}")
+                    
+                    i += 1
+                    return self._extract_csharp_method_parameters(tokens, i, function_name, start_idx, access_modifiers, return_types, is_constructor, is_async)
+                    
+                elif next_token == '{':
+                    # This might be a property
+                    function_name = value
+                    is_property = True
+                    logging.debug(f"Found C# property definition: {function_name}")
+                    
+                    i += 1
+                    return self._extract_csharp_property_definition(tokens, i, function_name, start_idx, access_modifiers, return_types)
+        
+        return False, None, None, start_idx, None, None
+
+    def _detect_c_family_function(self, tokens, start_idx):
+        """
+        Method 5: Detect C/C++ function definitions.
+        """
+        return self._detect_generic_function(tokens, start_idx)
+
+    def _detect_rust_function(self, tokens, start_idx):
+        """
+        Method 6: Detect Rust function definitions (fn keyword).
+        """
+        i = start_idx
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        ttype, value = tokens[i]
+        
+        if ttype == Keyword and value == 'fn':
+            i += 1
+            while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                i += 1
+            
+            if i < len(tokens):
+                next_ttype, next_value = tokens[i]
+                if next_ttype in (Name.Other, Name, Name.Function):
+                    function_name = next_value
+                    logging.debug(f"Found Rust function definition: {function_name}")
+                    i += 1
+                    return self._extract_function_parameters(tokens, i, function_name, start_idx)
+        
+        return False, None, None, start_idx, None, None
+
+    def _detect_go_function(self, tokens, start_idx):
+        """
+        Method 7: Detect Go function definitions (func keyword).
+        """
+        i = start_idx
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        ttype, value = tokens[i]
+        
+        if ttype == Keyword and value == 'func':
+            i += 1
+            while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                i += 1
+            
+            if i < len(tokens):
+                next_ttype, next_value = tokens[i]
+                if next_ttype in (Name.Other, Name, Name.Function):
+                    function_name = next_value
+                    logging.debug(f"Found Go function definition: {function_name}")
+                    i += 1
+                    return self._extract_function_parameters(tokens, i, function_name, start_idx)
+        
+        return False, None, None, start_idx, None, None
+
+    def _detect_php_function(self, tokens, start_idx):
+        """
+        Method 8: Detect PHP function definitions.
+        """
+        i = start_idx
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        ttype, value = tokens[i]
+        
+        if ttype == Keyword and value == 'function':
+            i += 1
+            while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                i += 1
+            
+            if i < len(tokens):
+                next_ttype, next_value = tokens[i]
+                if next_ttype in (Name.Other, Name, Name.Function):
+                    function_name = next_value
+                    logging.debug(f"Found PHP function definition: {function_name}")
+                    i += 1
+                    return self._extract_function_parameters(tokens, i, function_name, start_idx)
+        
+        return False, None, None, start_idx, None, None
+
+    def _detect_ruby_function(self, tokens, start_idx):
+        """
+        Method 9: Detect Ruby function definitions (def keyword).
+        """
+        i = start_idx
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        ttype, value = tokens[i]
+        
+        if ttype == Keyword and value == 'def':
+            i += 1
+            while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                i += 1
+            
+            if i < len(tokens):
+                next_ttype, next_value = tokens[i]
+                if next_ttype in (Name.Other, Name, Name.Function):
+                    function_name = next_value
+                    logging.debug(f"Found Ruby function definition: {function_name}")
+                    i += 1
+                    return self._extract_function_parameters(tokens, i, function_name, start_idx)
+        
+        return False, None, None, start_idx, None, None
+
+    def _detect_generic_function(self, tokens, start_idx):
+        """
+        Generic function detection fallback for unrecognized languages.
+        Uses original complex logic for broad compatibility.
+        """
         i = start_idx
         function_name = ""
         parameters = ""
         access_modifier = ""
         return_type = ""
-        found_def = False
-        found_name = False
-        paren_count = 0
 
         # Skip whitespace at the beginning
         while i < len(tokens) and tokens[i][0] in (Whitespace,):
@@ -218,7 +585,6 @@ class TLDRFormatter(Formatter):
             return False, None, None, start_idx, None, None
 
         # Look backwards for access modifiers and return types
-        # This helps capture patterns like "public static int myFunction()"
         access_modifiers = []
         return_types = []
 
@@ -236,196 +602,733 @@ class TLDRFormatter(Formatter):
 
         # Look for function definition patterns
         ttype, value = tokens[i]
-        is_arrow_function = False
         
-        # Method 1: Look for Name.Function token (Python, some other languages)
+        # Try to find function name through various patterns
         if ttype == Name.Function or ttype == Name.Function.Magic:
-            # High confidence this is a function definition
             function_name = value
-            found_name = True
-            logging.debug(f"Found function definition (Name.Function): {function_name}")
             i += 1
-        
-        # Method 2: Look for JavaScript/TypeScript function patterns
-        elif ttype == Keyword.Declaration and value == 'function':
-            # Look for the function name after the 'function' keyword
-            i += 1
-            # Skip whitespace
-            while i < len(tokens) and tokens[i][0] in (Whitespace,):
-                i += 1
-            
-            if i < len(tokens):
-                next_ttype, next_value = tokens[i]
-                if next_ttype in (Name.Other, Name):
-                    function_name = next_value
-                    found_name = True
-                    logging.debug(f"Found function definition (JS function): {function_name}")
-                    i += 1
-        
-        # Method 2b: Look for export function patterns
-        elif ttype == Keyword and value == 'export':
-            # Look ahead for 'function' keyword
+        elif ttype in (Name.Other, Name) and i + 1 < len(tokens):
+            # Check if next significant token suggests this is a function
             temp_i = i + 1
             while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
                 temp_i += 1
-            
-            if temp_i < len(tokens) and tokens[temp_i][0] == Keyword.Declaration and tokens[temp_i][1] == 'function':
-                # Found export function, look for the function name
-                temp_i += 1
-                while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                    temp_i += 1
-                
-                if temp_i < len(tokens) and tokens[temp_i][0] in (Name.Other, Name):
-                    function_name = tokens[temp_i][1]
-                    found_name = True
-                    logging.debug(f"Found export function definition: {function_name}")
-                    i = temp_i + 1
-        
-        # Method 3: Look for const/let/var arrow functions
-        elif ttype in (Keyword.Declaration, Keyword) and value in ('const', 'let', 'var'):
-            # Look ahead for arrow function pattern: const name = (...) => {...}
-            temp_i = i + 1
-            potential_name = ""
-            
-            # Skip whitespace and get the name
-            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                temp_i += 1
-            if temp_i < len(tokens) and tokens[temp_i][0] in (Name.Other, Name):
-                potential_name = tokens[temp_i][1]
-                temp_i += 1
-            
-            # Look for = ... => pattern
-            found_arrow = False
-            paren_depth = 0
-            while temp_i < len(tokens) and temp_i < i + 20:  # Limit search range
-                temp_ttype, temp_value = tokens[temp_i]
-                if temp_value == '=' and paren_depth == 0:
-                    # Found assignment, look for arrow function
-                    temp_i += 1
-                    while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                        temp_i += 1
-                    
-                    # Check for different arrow function patterns
-                    arrow_start = temp_i
-                    while temp_i < len(tokens) and temp_i < arrow_start + 10:
-                        temp_ttype, temp_value = tokens[temp_i]
-                        if temp_value == '=>':
-                            found_arrow = True
-                            break
-                        elif temp_value == '(':
-                            paren_depth += 1
-                        elif temp_value == ')':
-                            paren_depth -= 1
-                        temp_i += 1
-                    break
-                elif temp_value == '(':
-                    paren_depth += 1
-                elif temp_value == ')':
-                    paren_depth -= 1
-                temp_i += 1
-            
-            if found_arrow and potential_name:
-                function_name = potential_name
-                found_name = True
-                is_arrow_function = True
-                logging.debug(f"Found arrow function definition: {function_name}")
-                # Position after the name
-                i += 1
-                while i < len(tokens) and tokens[i][0] in (Whitespace,):
-                    i += 1
-                if i < len(tokens) and tokens[i][0] in (Name.Other, Name):
-                    i += 1
-
-            # Look forward for return type annotations (like Python type hints: -> int)
-            temp_i = i
-            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                temp_i += 1
-
-            # Check for opening paren first
             if temp_i < len(tokens) and tokens[temp_i][1] == '(':
-                # Skip to after the closing paren to look for return type
-                paren_depth = 1
-                temp_i += 1
-                while temp_i < len(tokens) and paren_depth > 0:
-                    if tokens[temp_i][1] == '(':
-                        paren_depth += 1
-                    elif tokens[temp_i][1] == ')':
-                        paren_depth -= 1
-                    temp_i += 1
+                function_name = value
+                i += 1
 
-                # Now look for return type annotation (-> Type)
-                while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                    temp_i += 1
-
-                if temp_i < len(tokens) - 1:
-                    if tokens[temp_i][1] == '-' and temp_i + 1 < len(tokens) and tokens[temp_i + 1][1] == '>':
-                        # Found -> annotation, get the return type
-                        temp_i += 2
-                        while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                            temp_i += 1
-                        if temp_i < len(tokens) and tokens[temp_i][0] in (Name, Name.Builtin, Keyword.Type):
-                            return_types.append(tokens[temp_i][1])
-
-        if not found_name:
+        if not function_name:
             return False, None, None, start_idx, None, None
 
         # Combine modifiers and return types
         access_modifier = ' '.join(access_modifiers) if access_modifiers else None
         return_type = ' '.join(return_types) if return_types else None
 
-        # For arrow functions, look for the parameter pattern differently
-        if is_arrow_function:
-            # This is an arrow function, extract parameters differently
-            temp_i = i
-            while temp_i < len(tokens):
-                temp_ttype, temp_value = tokens[temp_i]
-                if temp_value == '=':
+        return self._extract_function_parameters(tokens, i, function_name, start_idx, access_modifier, return_type)
+
+    def _extract_js_function_declaration(self, tokens, i):
+        """
+        Extract JavaScript function declaration: function name(...) { }
+        """
+        # Skip 'function' keyword
+        i += 1
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+        
+        if i < len(tokens):
+            next_ttype, next_value = tokens[i]
+            if next_ttype in (Name.Other, Name):
+                function_name = next_value
+                logging.debug(f"Found JS function definition: {function_name}")
+                i += 1
+                return self._extract_function_parameters(tokens, i, function_name, i)
+        
+        return False, None, None, i, None, None
+
+    def _extract_js_export_function(self, tokens, i):
+        """
+        Extract export function pattern: export function name(...) { }
+        """
+        # Look ahead for 'function' keyword
+        temp_i = i + 1
+        while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+            temp_i += 1
+        
+        if temp_i < len(tokens) and tokens[temp_i][0] == Keyword.Declaration and tokens[temp_i][1] == 'function':
+            # Found export function, look for the function name
+            temp_i += 1
+            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                temp_i += 1
+            
+            if temp_i < len(tokens) and tokens[temp_i][0] in (Name.Other, Name):
+                function_name = tokens[temp_i][1]
+                logging.debug(f"Found export function definition: {function_name}")
+                temp_i += 1
+                return self._extract_function_parameters(tokens, temp_i, function_name, i)
+        
+        return False, None, None, i, None, None
+
+    def _extract_js_arrow_function(self, tokens, i):
+        """
+        Extract arrow function pattern: const name = (...) => { }
+        """
+        # Look ahead for arrow function pattern: const name = (...) => {...}
+        temp_i = i + 1
+        potential_name = ""
+        
+        # Skip whitespace and get the name
+        while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+            temp_i += 1
+        if temp_i < len(tokens) and tokens[temp_i][0] in (Name.Other, Name):
+            potential_name = tokens[temp_i][1]
+            temp_i += 1
+        
+        # Look for = ... => pattern
+        found_arrow = False
+        paren_depth = 0
+        while temp_i < len(tokens) and temp_i < i + 20:  # Limit search range
+            temp_ttype, temp_value = tokens[temp_i]
+            if temp_value == '=' and paren_depth == 0:
+                # Found assignment, look for arrow function
+                temp_i += 1
+                while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
                     temp_i += 1
-                    while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                
+                # Check for different arrow function patterns
+                arrow_start = temp_i
+                while temp_i < len(tokens) and temp_i < arrow_start + 10:
+                    temp_ttype, temp_value = tokens[temp_i]
+                    if temp_value == '=>':
+                        found_arrow = True
+                        break
+                    elif temp_value == '(':
+                        paren_depth += 1
+                    elif temp_value == ')':
+                        paren_depth -= 1
+                    temp_i += 1
+                break
+            elif temp_value == '(':
+                paren_depth += 1
+            elif temp_value == ')':
+                paren_depth -= 1
+            temp_i += 1
+        
+        if found_arrow and potential_name:
+            function_name = potential_name
+            logging.debug(f"Found arrow function definition: {function_name}")
+            return self._extract_arrow_function_parameters(tokens, i, function_name)
+        
+        return False, None, None, i, None, None
+
+    def _extract_arrow_function_parameters(self, tokens, start_i, function_name):
+        """
+        Extract parameters from arrow function.
+        """
+        # This is an arrow function, extract parameters differently
+        temp_i = start_i + 1  # Skip past const/let/var
+        while temp_i < len(tokens):
+            temp_ttype, temp_value = tokens[temp_i]
+            if temp_value == '=':
+                temp_i += 1
+                while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                    temp_i += 1
+                
+                # Look for parameter pattern: () or (param1, param2) or param
+                if temp_i < len(tokens) and tokens[temp_i][1] == '(':
+                    # Extract parameters from parentheses
+                    paren_count = 1
+                    temp_i += 1
+                    param_tokens = []
+                    
+                    while temp_i < len(tokens) and paren_count > 0:
+                        temp_ttype, temp_value = tokens[temp_i]
+                        if temp_value == '(':
+                            paren_count += 1
+                        elif temp_value == ')':
+                            paren_count -= 1
+                        
+                        if paren_count > 0:
+                            param_tokens.append((temp_ttype, temp_value))
                         temp_i += 1
                     
-                    # Look for parameter pattern: () or (param1, param2) or param
-                    if temp_i < len(tokens) and tokens[temp_i][1] == '(':
-                        # Extract parameters from parentheses
-                        paren_count = 1
+                    parameters = ''.join(token[1] for token in param_tokens).strip()
+                    parameters = ' '.join(parameters.split())
+                    
+                    # Look for the arrow
+                    while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
                         temp_i += 1
-                        param_tokens = []
-                        
-                        while temp_i < len(tokens) and paren_count > 0:
-                            temp_ttype, temp_value = tokens[temp_i]
-                            if temp_value == '(':
-                                paren_count += 1
-                            elif temp_value == ')':
-                                paren_count -= 1
-                            
-                            if paren_count > 0:
-                                param_tokens.append((temp_ttype, temp_value))
-                            temp_i += 1
-                        
+                    if temp_i < len(tokens) and tokens[temp_i][1] == '=>':
+                        return True, function_name, parameters, temp_i, None, None
+                else:
+                    # Single parameter without parentheses
+                    param_start = temp_i
+                    while temp_i < len(tokens) and tokens[temp_i][1] != '=>':
+                        temp_i += 1
+                    if temp_i < len(tokens):
+                        param_tokens = tokens[param_start:temp_i]
                         parameters = ''.join(token[1] for token in param_tokens).strip()
                         parameters = ' '.join(parameters.split())
-                        
-                        # Look for the arrow
-                        while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                            temp_i += 1
-                        if temp_i < len(tokens) and tokens[temp_i][1] == '=>':
-                            return True, function_name, parameters, temp_i, access_modifier, return_type
-                    else:
-                        # Single parameter without parentheses
-                        param_start = temp_i
-                        while temp_i < len(tokens) and tokens[temp_i][1] != '=>':
-                            temp_i += 1
-                        if temp_i < len(tokens):
-                            param_tokens = tokens[param_start:temp_i]
-                            parameters = ''.join(token[1] for token in param_tokens).strip()
-                            parameters = ' '.join(parameters.split())
-                            return True, function_name, parameters, temp_i, access_modifier, return_type
-                    break
-                temp_i += 1
+                        return True, function_name, parameters, temp_i, None, None
+                break
+            temp_i += 1
         
-        # Look for opening parenthesis to confirm it's a function (traditional functions)
+        return False, None, None, start_i, None, None
+
+    def _extract_java_method_parameters(self, tokens, i, function_name, start_idx, access_modifiers, return_types, is_constructor):
+        """
+        Extract parameters from Java method definitions.
+        Handles generics, annotations, and Java-specific syntax.
+        """
+        # Combine modifiers and return types
+        access_modifier = ' '.join(access_modifiers) if access_modifiers else None
+        return_type = ' '.join(return_types) if return_types else None
+        
+        # For constructors, the return type is implicitly the class name
+        if is_constructor:
+            return_type = function_name  # Constructor returns instance of the class
+        
+        # Skip over any generic type parameters (e.g., <T, U>)
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '<':
+                # Skip over generic type parameters
+                angle_count = 1
+                i += 1
+                while i < len(tokens) and angle_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '<':
+                            angle_count += 1
+                        elif value == '>':
+                            angle_count -= 1
+                    i += 1
+                break
+            elif ttype == Punctuation and value == '(':
+                break
+            elif ttype not in (Whitespace,):
+                # Skip over other tokens until we find ( or <
+                i += 1
+                if i >= len(tokens):
+                    break
+            else:
+                i += 1
+
+        # Now look for the opening parenthesis
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '(':
+                # Found method signature, now extract parameters
+                paren_count = 1
+                i += 1
+                param_tokens = []
+
+                while i < len(tokens) and paren_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '(':
+                            paren_count += 1
+                        elif value == ')':
+                            paren_count -= 1
+
+                    # Collect parameter tokens (exclude the closing parenthesis)
+                    if paren_count > 0:
+                        param_tokens.append((ttype, value))
+
+                    i += 1
+
+                # Extract parameter string
+                parameters = ''.join(token[1] for token in param_tokens).strip()
+                # Clean up parameters - remove newlines and extra spaces
+                parameters = ' '.join(parameters.split())
+
+                # Look for throws clause (throws Exception1, Exception2)
+                throws_clause = []
+                while i < len(tokens):
+                    ttype, value = tokens[i]
+                    if ttype == Keyword and value == 'throws':
+                        # Found throws clause, collect exception types
+                        i += 1
+                        while i < len(tokens):
+                            ttype, value = tokens[i]
+                            if value in ('{', ';') or value == '\n':
+                                break
+                            if ttype in (Name, Name.Exception) and value not in (',', ' '):
+                                throws_clause.append(value)
+                            i += 1
+                        break
+                    elif value in ('{', ';') or value == '\n':
+                        break
+                    i += 1
+
+                # Add throws clause to access modifier if present
+                if throws_clause:
+                    throws_str = 'throws ' + ', '.join(throws_clause)
+                    if access_modifier:
+                        access_modifier += ' ' + throws_str
+                    else:
+                        access_modifier = throws_str
+
+                return True, function_name, parameters, i, access_modifier, return_type
+            elif ttype not in (Whitespace,):
+                break
+            i += 1
+
+        return False, None, None, start_idx, None, None
+
+    def _extract_csharp_method_parameters(self, tokens, i, function_name, start_idx, access_modifiers, return_types, is_constructor, is_async):
+        """
+        Extract parameters from C# method definitions.
+        Handles generics, nullable types, default parameters, ref/out parameters.
+        """
+        # Combine modifiers and return types
+        access_modifier = ' '.join(access_modifiers) if access_modifiers else None
+        return_type = ' '.join(return_types) if return_types else None
+        
+        # For constructors, the return type is implicitly the class name
+        if is_constructor:
+            return_type = function_name
+        
+        # Skip over any generic type parameters (e.g., <T, U>)
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '<':
+                # Skip over generic type parameters
+                angle_count = 1
+                i += 1
+                while i < len(tokens) and angle_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '<':
+                            angle_count += 1
+                        elif value == '>':
+                            angle_count -= 1
+                    i += 1
+                break
+            elif ttype == Punctuation and value == '(':
+                break
+            elif ttype not in (Whitespace,):
+                # Skip over other tokens until we find ( or <
+                i += 1
+                if i >= len(tokens):
+                    break
+            else:
+                i += 1
+
+        # Now look for the opening parenthesis
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '(':
+                # Found method signature, now extract parameters
+                paren_count = 1
+                i += 1
+                param_tokens = []
+
+                while i < len(tokens) and paren_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '(':
+                            paren_count += 1
+                        elif value == ')':
+                            paren_count -= 1
+
+                    # Collect parameter tokens (exclude the closing parenthesis)
+                    if paren_count > 0:
+                        param_tokens.append((ttype, value))
+
+                    i += 1
+
+                # Extract parameter string
+                parameters = ''.join(token[1] for token in param_tokens).strip()
+                # Clean up parameters - remove newlines and extra spaces
+                parameters = ' '.join(parameters.split())
+
+                # Look for where clause (generic constraints)
+                where_clause = []
+                while i < len(tokens):
+                    ttype, value = tokens[i]
+                    if ttype == Keyword and value == 'where':
+                        # Found where clause for generic constraints
+                        constraint_start = i
+                        i += 1
+                        while i < len(tokens):
+                            ttype, value = tokens[i]
+                            if value in ('{', ';') or value == '\n':
+                                break
+                            i += 1
+                        
+                        # Extract the where clause
+                        where_tokens = tokens[constraint_start:i]
+                        where_str = ''.join(token[1] for token in where_tokens).strip()
+                        where_clause.append(where_str)
+                        break
+                    elif value in ('{', ';') or value == '\n':
+                        break
+                    i += 1
+
+                # Add where clause to access modifier if present
+                if where_clause:
+                    where_str = ' '.join(where_clause)
+                    if access_modifier:
+                        access_modifier += ' ' + where_str
+                    else:
+                        access_modifier = where_str
+
+                return True, function_name, parameters, i, access_modifier, return_type
+            elif ttype not in (Whitespace,):
+                break
+            i += 1
+
+        return False, None, None, start_idx, None, None
+
+    def _extract_csharp_property_definition(self, tokens, i, property_name, start_idx, access_modifiers, return_types):
+        """
+        Extract C# property definitions like: public string Name { get; set; }
+        """
+        # Combine modifiers and return types
+        access_modifier = ' '.join(access_modifiers) if access_modifiers else None
+        return_type = ' '.join(return_types) if return_types else None
+        
+        # Look for property accessors within braces
+        brace_count = 0
+        accessor_tokens = []
+        
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '{':
+                brace_count += 1
+                if brace_count == 1:
+                    # Start collecting accessor tokens
+                    i += 1
+                    continue
+            elif ttype == Punctuation and value == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    # End of property definition
+                    break
+            
+            if brace_count > 0:
+                accessor_tokens.append((ttype, value))
+            
+            i += 1
+        
+        # Extract accessor information (get, set, init, etc.)
+        accessors = ''.join(token[1] for token in accessor_tokens).strip()
+        accessors = ' '.join(accessors.split())
+        
+        # Properties don't have traditional parameters, but we can show the accessors
+        parameters = f"{{ {accessors} }}" if accessors else "{ }"
+        
+        return True, property_name, parameters, i, access_modifier, return_type
+
+    def _extract_swift_function_declaration(self, tokens, i, access_modifiers):
+        """
+        Extract Swift function declaration: func name(params) -> ReturnType
+        """
+        # Skip 'func' keyword
+        i += 1
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+        
+        if i < len(tokens):
+            next_ttype, next_value = tokens[i]
+            if next_ttype in (Name.Function, Name.Other, Name):
+                function_name = next_value
+                logging.debug(f"Found Swift function definition: {function_name}")
+                i += 1
+                return self._extract_swift_function_parameters(tokens, i, function_name, i, access_modifiers)
+        
+        return False, None, None, i, None, None
+
+    def _extract_swift_function_parameters(self, tokens, i, function_name, start_idx, access_modifiers):
+        """
+        Extract parameters from Swift function definitions.
+        Handles: parameter labels, default values, variadic parameters, inout parameters, return types.
+        """
+        access_modifier = ' '.join(access_modifiers) if access_modifiers else None
+        return_type = None
+        
+        # Skip over any generic type parameters (e.g., <T>)
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '<':
+                # Skip over generic type parameters
+                angle_count = 1
+                i += 1
+                while i < len(tokens) and angle_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '<':
+                            angle_count += 1
+                        elif value == '>':
+                            angle_count -= 1
+                    i += 1
+                break
+            elif ttype == Punctuation and value == '(':
+                break
+            elif ttype not in (Whitespace,):
+                # Skip over other tokens until we find ( or <
+                i += 1
+                if i >= len(tokens):
+                    break
+            else:
+                i += 1
+
+        # Extract parameters
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '(':
+                # Found function signature, now extract parameters
+                paren_count = 1
+                i += 1
+                param_tokens = []
+
+                while i < len(tokens) and paren_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '(':
+                            paren_count += 1
+                        elif value == ')':
+                            paren_count -= 1
+
+                    # Collect parameter tokens (exclude the closing parenthesis)
+                    if paren_count > 0:
+                        param_tokens.append((ttype, value))
+
+                    i += 1
+
+                # Extract parameter string
+                parameters = ''.join(token[1] for token in param_tokens).strip()
+                parameters = ' '.join(parameters.split())
+
+                # Look for Swift return type annotation (-> ReturnType)
+                return_type_tokens = []
+                while i < len(tokens):
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation and value == '-':
+                        # Check if this is followed by >
+                        if i + 1 < len(tokens) and tokens[i + 1][1] == '>':
+                            # Found -> return type annotation
+                            i += 2  # Skip ->
+                            while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                                i += 1
+                            
+                            # Collect return type tokens until { or where
+                            while i < len(tokens):
+                                ttype, value = tokens[i]
+                                if value in ('{', 'where') or value == '\n':
+                                    break
+                                return_type_tokens.append((ttype, value))
+                                i += 1
+                            
+                            if return_type_tokens:
+                                return_type = ''.join(token[1] for token in return_type_tokens).strip()
+                                return_type = ' '.join(return_type.split())
+                            break
+                    elif value in ('{', 'where') or value == '\n':
+                        break
+                    i += 1
+
+                return True, function_name, parameters, i, access_modifier, return_type
+            elif ttype not in (Whitespace,):
+                break
+            i += 1
+
+        return False, None, None, start_idx, None, None
+
+    def _extract_swift_initializer_parameters(self, tokens, i, function_name, start_idx, access_modifiers):
+        """
+        Extract Swift initializer parameters: init(params)
+        """
+        access_modifier = ' '.join(access_modifiers) if access_modifiers else None
+        
+        # Initializers don't have explicit return types (they return Self)
+        return_type = "Self"
+        
+        # Look for opening parenthesis
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '(':
+                # Found initializer signature, extract parameters
+                paren_count = 1
+                i += 1
+                param_tokens = []
+
+                while i < len(tokens) and paren_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '(':
+                            paren_count += 1
+                        elif value == ')':
+                            paren_count -= 1
+
+                    if paren_count > 0:
+                        param_tokens.append((ttype, value))
+
+                    i += 1
+
+                # Extract parameter string
+                parameters = ''.join(token[1] for token in param_tokens).strip()
+                parameters = ' '.join(parameters.split())
+
+                return True, function_name, parameters, i, access_modifier, return_type
+            elif ttype not in (Whitespace,):
+                break
+            i += 1
+
+        return False, None, None, start_idx, None, None
+
+    def _extract_swift_property_or_subscript(self, tokens, i, access_modifiers, keyword):
+        """
+        Extract Swift computed properties: var name: Type { get set }
+        """
+        # Skip var/let keyword
+        i += 1
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+        
+        if i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype in (Name.Other, Name, Name.Property):
+                property_name = value
+                i += 1
+                
+                # Look for type annotation and computed property braces
+                while i < len(tokens):
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation and value == '{':
+                        # Found computed property
+                        logging.debug(f"Found Swift computed property: {property_name}")
+                        
+                        # Extract the property accessors
+                        brace_count = 1
+                        i += 1
+                        accessor_tokens = []
+                        
+                        while i < len(tokens) and brace_count > 0:
+                            ttype, value = tokens[i]
+                            if ttype == Punctuation:
+                                if value == '{':
+                                    brace_count += 1
+                                elif value == '}':
+                                    brace_count -= 1
+                            
+                            if brace_count > 0:
+                                accessor_tokens.append((ttype, value))
+                            i += 1
+                        
+                        # Extract accessor information
+                        accessors = ''.join(token[1] for token in accessor_tokens).strip()
+                        accessors = ' '.join(accessors.split())
+                        
+                        access_modifier = ' '.join(access_modifiers) if access_modifiers else None
+                        parameters = f"{{ {accessors} }}" if accessors else "{ }"
+                        
+                        return True, property_name, parameters, i, access_modifier, None
+                    i += 1
+        
+        return False, None, None, i, None, None
+
+    def _extract_swift_subscript_parameters(self, tokens, i, function_name, start_idx, access_modifiers):
+        """
+        Extract Swift subscript parameters: subscript(index: Int) -> Element
+        """
+        access_modifier = ' '.join(access_modifiers) if access_modifiers else None
+        return_type = None
+        
+        # Look for opening parenthesis
+        while i < len(tokens):
+            ttype, value = tokens[i]
+            if ttype == Punctuation and value == '(':
+                # Found subscript signature, extract parameters
+                paren_count = 1
+                i += 1
+                param_tokens = []
+
+                while i < len(tokens) and paren_count > 0:
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation:
+                        if value == '(':
+                            paren_count += 1
+                        elif value == ')':
+                            paren_count -= 1
+
+                    if paren_count > 0:
+                        param_tokens.append((ttype, value))
+
+                    i += 1
+
+                # Extract parameter string
+                parameters = ''.join(token[1] for token in param_tokens).strip()
+                parameters = ' '.join(parameters.split())
+
+                # Look for return type (-> ReturnType)
+                while i < len(tokens):
+                    ttype, value = tokens[i]
+                    if ttype == Punctuation and value == '-':
+                        if i + 1 < len(tokens) and tokens[i + 1][1] == '>':
+                            i += 2
+                            while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                                i += 1
+                            
+                            return_type_tokens = []
+                            while i < len(tokens):
+                                ttype, value = tokens[i]
+                                if value in ('{', 'where') or value == '\n':
+                                    break
+                                return_type_tokens.append((ttype, value))
+                                i += 1
+                            
+                            if return_type_tokens:
+                                return_type = ''.join(token[1] for token in return_type_tokens).strip()
+                                return_type = ' '.join(return_type.split())
+                            break
+                    elif value in ('{', 'where') or value == '\n':
+                        break
+                    i += 1
+
+                return True, function_name, parameters, i, access_modifier, return_type
+            elif ttype not in (Whitespace,):
+                break
+            i += 1
+
+        return False, None, None, start_idx, None, None
+
+    def _extract_function_parameters(self, tokens, i, function_name, start_idx, access_modifier=None, return_type=None):
+        """
+        Common parameter extraction logic for traditional function definitions.
+        """
+        # Look forward for return type annotations (like Python type hints: -> int)
+        temp_i = i
+        while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+            temp_i += 1
+
+        # Check for opening paren first
+        if temp_i < len(tokens) and tokens[temp_i][1] == '(':
+            # Skip to after the closing paren to look for return type
+            paren_depth = 1
+            temp_i += 1
+            while temp_i < len(tokens) and paren_depth > 0:
+                if tokens[temp_i][1] == '(':
+                    paren_depth += 1
+                elif tokens[temp_i][1] == ')':
+                    paren_depth -= 1
+                temp_i += 1
+
+            # Now look for return type annotation (-> Type)
+            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                temp_i += 1
+
+            if temp_i < len(tokens) - 1:
+                if tokens[temp_i][1] == '-' and temp_i + 1 < len(tokens) and tokens[temp_i + 1][1] == '>':
+                    # Found -> annotation, get the return type
+                    temp_i += 2
+                    while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                        temp_i += 1
+                    if temp_i < len(tokens) and tokens[temp_i][0] in (Name, Name.Builtin, Keyword.Type):
+                        if not return_type:  # Don't override if already found
+                            return_type = tokens[temp_i][1]
+
+        # Look for opening parenthesis to extract parameters
         # First, skip over any generic type parameters (e.g., <T>)
-        generic_start = i
         while i < len(tokens):
             ttype, value = tokens[i]
             if ttype == Punctuation and value == '<':
