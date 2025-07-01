@@ -9,7 +9,7 @@ import logging
 from pygments_tldr.formatter import Formatter
 from pygments_tldr.token import (
     Token, Whitespace, Error, Other, Keyword, Name, Literal, String,
-    Number, Punctuation, Operator, Comment, Generic
+    Number, Punctuation, Operator, Comment, Generic, Text
 )
 from pygments_tldr.util import get_bool_opt, get_int_opt, get_list_opt
 
@@ -631,7 +631,7 @@ class TLDRFormatter(Formatter):
         Method 9: Detect PHP function definitions.
         """
         i = start_idx
-        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+        while i < len(tokens) and (tokens[i][0] in (Whitespace,) or (tokens[i][0] == Text and tokens[i][1].strip() == '')):
             i += 1
 
         if i >= len(tokens):
@@ -641,12 +641,12 @@ class TLDRFormatter(Formatter):
         
         if ttype == Keyword and value == 'function':
             i += 1
-            while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            while i < len(tokens) and (tokens[i][0] in (Whitespace,) or (tokens[i][0] == Text and tokens[i][1].strip() == '')):
                 i += 1
             
             if i < len(tokens):
                 next_ttype, next_value = tokens[i]
-                if next_ttype in (Name.Other, Name, Name.Function):
+                if next_ttype in (Name.Other, Name, Name.Function, Name.Function.Magic):
                     function_name = next_value
                     logging.debug(f"Found PHP function definition: {function_name}")
                     i += 1
