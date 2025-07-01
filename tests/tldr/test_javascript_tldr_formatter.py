@@ -4,8 +4,6 @@
 
     Test JavaScript-specific function detection using the highlight() API.
 
-    :copyright: Copyright 2006-2025 by the Pygments team, see AUTHORS.
-    :license: BSD, see LICENSE for details.
 """
 import logging
 import re
