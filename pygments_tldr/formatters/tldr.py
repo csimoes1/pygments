@@ -657,6 +657,7 @@ class TLDRFormatter(Formatter):
     def _detect_ruby_function(self, tokens, start_idx):
         """
         Method 10: Detect Ruby function definitions (def keyword).
+        Handles both instance methods and class methods (def self.method_name).
         """
         i = start_idx
         while i < len(tokens) and tokens[i][0] in (Whitespace,):
@@ -674,11 +675,36 @@ class TLDRFormatter(Formatter):
             
             if i < len(tokens):
                 next_ttype, next_value = tokens[i]
-                if next_ttype in (Name.Other, Name, Name.Function):
-                    function_name = next_value
-                    logging.debug(f"Found Ruby function definition: {function_name}")
+                
+                # Check for class method: def self.method_name
+                if next_ttype == Name.Class and next_value == 'self':
                     i += 1
-                    return self._extract_function_parameters(tokens, i, function_name, start_idx)
+                    # Skip the dot operator
+                    while i < len(tokens) and tokens[i][0] in (Whitespace, Operator):
+                        if tokens[i][1] == '.':
+                            i += 1
+                            break
+                        i += 1
+                    
+                    # Skip any whitespace after the dot
+                    while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                        i += 1
+                    
+                    # Now get the actual method name
+                    if i < len(tokens):
+                        method_ttype, method_value = tokens[i]
+                        if method_ttype in (Name.Other, Name, Name.Function):
+                            function_name = method_value
+                            logging.debug(f"Found Ruby class method: {function_name}")
+                            i += 1
+                            return self._extract_ruby_function_parameters(tokens, i, function_name, start_idx)
+                
+                # Regular instance method: def method_name
+                elif next_ttype in (Name.Other, Name, Name.Function):
+                    function_name = next_value
+                    logging.debug(f"Found Ruby instance method: {function_name}")
+                    i += 1
+                    return self._extract_ruby_function_parameters(tokens, i, function_name, start_idx)
         
         return False, None, None, start_idx, None, None
 
@@ -1935,6 +1961,88 @@ class TLDRFormatter(Formatter):
             i += 1
 
         return False, None, None, start_idx, None, None
+
+    def _extract_ruby_function_parameters(self, tokens, i, function_name, start_idx, access_modifier=None, return_type=None):
+        """
+        Ruby-specific parameter extraction that handles optional parentheses.
+        Ruby allows: def method_name, def method_name(), def method_name(params)
+        """
+        # Skip any whitespace after the function name
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+        
+        # Check if there are parentheses
+        if i < len(tokens) and tokens[i][1] == '(':
+            # Has parentheses - extract parameters normally
+            paren_count = 1
+            i += 1
+            param_tokens = []
+            
+            while i < len(tokens) and paren_count > 0:
+                ttype, value = tokens[i]
+                if ttype == Punctuation:
+                    if value == '(':
+                        paren_count += 1
+                    elif value == ')':
+                        paren_count -= 1
+                
+                # Collect parameter tokens (exclude the closing parenthesis)
+                if paren_count > 0:
+                    param_tokens.append((ttype, value))
+                
+                i += 1
+            
+            # Extract parameter string
+            parameters = ''.join(token[1] for token in param_tokens).strip()
+            # Clean up parameters - remove newlines and extra spaces
+            parameters = ' '.join(parameters.split())
+            
+            return True, function_name, parameters, i, access_modifier, return_type
+        else:
+            # No parentheses - Ruby method without parameters or with implicit parameters
+            # Look ahead to see if there are parameters without parentheses
+            param_tokens = []
+            
+            # Ruby can have parameters without parentheses like: def greet name, age
+            # Continue collecting tokens until we hit a newline or Ruby method body indicators
+            while i < len(tokens):
+                ttype, value = tokens[i]
+                
+                # Stop at newlines - this indicates end of method signature line
+                if '\n' in value:
+                    break
+                
+                # Stop at semicolons
+                if value == ';':
+                    break
+                
+                # Stop at comments
+                if ttype in (Comment, Comment.Single, Comment.Multiline):
+                    break
+                
+                # Stop at Ruby keywords that indicate method body or control structures
+                if ttype == Keyword and value in ('end', 'do', 'if', 'unless', 'while', 'until', 'case', 'when', 'else', 'elsif', 'rescue', 'ensure', 'class', 'module', 'def'):
+                    break
+                
+                # For Ruby, also stop at common statement patterns that indicate method body
+                if ttype in (Name, Name.Builtin) and value in ('puts', 'print', 'p', 'return', 'raise', 'require', 'include', 'extend'):
+                    break
+                
+                # Collect parameter tokens
+                param_tokens.append((ttype, value))
+                i += 1
+            
+            # Extract parameter string
+            parameters = ''.join(token[1] for token in param_tokens).strip()
+            # Clean up parameters - remove newlines and extra spaces
+            parameters = ' '.join(parameters.split())
+            
+            # If we found parameters, format them appropriately
+            if parameters:
+                return True, function_name, parameters, i, access_modifier, return_type
+            else:
+                # No parameters
+                return True, function_name, "", i, access_modifier, return_type
 
     def _format_function_signature(self, tokens, start_idx, end_idx, function_name):
         """
