@@ -574,6 +574,7 @@ class TLDRFormatter(Formatter):
     def _detect_go_function(self, tokens, start_idx):
         """
         Method 8: Detect Go function definitions (func keyword).
+        Handles both regular functions and receiver methods.
         """
         i = start_idx
         while i < len(tokens) and tokens[i][0] in (Whitespace,):
@@ -584,14 +585,40 @@ class TLDRFormatter(Formatter):
 
         ttype, value = tokens[i]
         
-        if ttype == Keyword and value == 'func':
+        if ttype in (Keyword, Keyword.Declaration) and value == 'func':
             i += 1
             while i < len(tokens) and tokens[i][0] in (Whitespace,):
                 i += 1
             
             if i < len(tokens):
                 next_ttype, next_value = tokens[i]
-                if next_ttype in (Name.Other, Name, Name.Function):
+                
+                # Check for receiver method: func (receiver Type) methodName
+                if next_ttype == Punctuation and next_value == '(':
+                    # Skip receiver parameters by finding the closing ')'
+                    paren_count = 1
+                    i += 1
+                    while i < len(tokens) and paren_count > 0:
+                        if tokens[i][1] == '(':
+                            paren_count += 1
+                        elif tokens[i][1] == ')':
+                            paren_count -= 1
+                        i += 1
+                    
+                    # Now look for the method name
+                    while i < len(tokens) and tokens[i][0] in (Whitespace,):
+                        i += 1
+                    
+                    if i < len(tokens):
+                        method_ttype, method_value = tokens[i]
+                        if method_ttype in (Name.Other, Name, Name.Function):
+                            function_name = method_value
+                            logging.debug(f"Found Go receiver method: {function_name}")
+                            i += 1
+                            return self._extract_function_parameters(tokens, i, function_name, start_idx)
+                
+                # Regular function: func functionName
+                elif next_ttype in (Name.Other, Name, Name.Function):
                     function_name = next_value
                     logging.debug(f"Found Go function definition: {function_name}")
                     i += 1
