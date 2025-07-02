@@ -319,16 +319,11 @@ class TLDRFormatter(Formatter):
         elif ttype in (Keyword.Declaration, Keyword) and value in ('const', 'let', 'var'):
             return self._extract_js_arrow_function(tokens, i)
         
-        # Method 2d: Class methods and object methods (Name.Other followed by parentheses)
-        elif ttype in (Name.Other, Name.Function) and i + 1 < len(tokens):
-            # Look ahead to see if this is followed by parentheses (indicating a method)
-            next_idx = i + 1
-            while next_idx < len(tokens) and tokens[next_idx][0] in (Whitespace,):
-                next_idx += 1
-            if next_idx < len(tokens) and tokens[next_idx][1] == '(':
-                function_name = value
-                logging.debug(f"Found JavaScript method: {function_name}")
-                return self._extract_js_method_parameters(tokens, next_idx, function_name, i)
+        # Method 2d: Class methods and object methods 
+        # DISABLED: This section was too broad and caught function calls as definitions
+        # Only rely on explicit patterns above (function keyword, export, const/let/var)
+        elif False:  # Disable this overly broad detection
+            pass
         
         return False, None, None, start_idx, None, None
 
@@ -894,17 +889,36 @@ class TLDRFormatter(Formatter):
                 while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
                     temp_i += 1
                 
-                # Check for different arrow function patterns
+                # Check for arrow function patterns - but be more strict
+                # Only detect direct arrow functions, not nested ones in method calls
                 arrow_start = temp_i
+                method_call_depth = 0
+                
                 while temp_i < len(tokens) and temp_i < arrow_start + 10:
                     temp_ttype, temp_value = tokens[temp_i]
-                    if temp_value == '=>':
+                    
+                    if temp_value == '=>' and method_call_depth == 0:
+                        # Found arrow at top level - this is a direct arrow function assignment
                         found_arrow = True
+                        break
+                    elif temp_value == '=>' and method_call_depth > 0:
+                        # Found arrow inside method call - not a direct assignment
                         break
                     elif temp_value == '(':
                         paren_depth += 1
+                        # Check if this looks like a method call
+                        # Look back to see if there's a dot or function name before the paren
+                        prev_i = temp_i - 1
+                        while prev_i >= arrow_start and tokens[prev_i][0] in (Whitespace,):
+                            prev_i -= 1
+                        if prev_i >= arrow_start:
+                            prev_token = tokens[prev_i][1]
+                            if prev_token in ('find', 'map', 'filter', 'forEach', 'some', 'every', 'reduce') or tokens[prev_i - 1][1] == '.':
+                                method_call_depth += 1
                     elif temp_value == ')':
                         paren_depth -= 1
+                        if method_call_depth > 0:
+                            method_call_depth -= 1
                     temp_i += 1
                 break
             elif temp_value == '(':
