@@ -382,24 +382,7 @@ class TLDRFormatter(Formatter):
         # Method 3c: TypeScript arrow functions (const/let/var with type annotations)
         elif ttype in (Keyword.Declaration, Keyword) and value in ('const', 'let', 'var'):
             return self._extract_typescript_arrow_function(tokens, i)
-        
-        # Method 3d: TypeScript class method or interface method signatures
-        elif ttype in (Name.Function, Name.Other, Name) and i + 1 < len(tokens):
-            # Look ahead to see if this looks like a TypeScript method signature
-            temp_i = i + 1
-            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                temp_i += 1
-            
-            if temp_i < len(tokens):
-                next_token = tokens[temp_i][1]
-                
-                # TypeScript method signature patterns
-                if next_token in ('(', '<'):  # Method call or generic method
-                    function_name = value
-                    logging.debug(f"Found TypeScript method/function: {function_name}")
-                    i += 1
-                    return self._extract_typescript_method_parameters(tokens, i, function_name, start_idx, access_modifiers, is_interface_method, is_abstract)
-        
+
         return False, None, None, start_idx, None, None
 
     def _detect_java_function(self, tokens, start_idx):
@@ -1355,6 +1338,12 @@ class TLDRFormatter(Formatter):
                 temp_i += 1
                 while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
                     temp_i += 1
+                
+                # Skip async keyword if present
+                if temp_i < len(tokens) and tokens[temp_i][1] == 'async':
+                    temp_i += 1
+                    while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                        temp_i += 1
                 
                 # Look for arrow function patterns (including type annotations)
                 arrow_start = temp_i
