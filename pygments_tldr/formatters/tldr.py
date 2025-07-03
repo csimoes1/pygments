@@ -889,7 +889,9 @@ class TLDRFormatter(Formatter):
             return self._extract_swift_initializer_parameters(tokens, i, function_name, start_idx, access_modifiers)
         
         # Method 11c: Swift computed properties and subscripts
-        elif ttype == Keyword.Declaration and value in ('var', 'let'):
+        # DISABLED: This was too broad and detected variable assignments with closures as functions
+        # Only detect explicit function definitions (func, init, subscript)
+        elif False and ttype == Keyword.Declaration and value in ('var', 'let'):
             return self._extract_swift_property_or_subscript(tokens, i, access_modifiers, value)
         
         # Method 11d: Swift subscripts
