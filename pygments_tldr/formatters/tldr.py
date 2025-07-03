@@ -2004,17 +2004,21 @@ class TLDRFormatter(Formatter):
         while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
             temp_i += 1
 
-        # Check for opening paren first
-        if temp_i < len(tokens) and tokens[temp_i][1] == '(':
-            # Skip to after the closing paren to look for return type
-            paren_depth = 1
-            temp_i += 1
-            while temp_i < len(tokens) and paren_depth > 0:
-                if tokens[temp_i][1] == '(':
-                    paren_depth += 1
-                elif tokens[temp_i][1] == ')':
-                    paren_depth -= 1
+        # Check for opening paren first (handle both "(" and "()" cases)
+        if temp_i < len(tokens) and (tokens[temp_i][1] == '(' or tokens[temp_i][1] == '()'):
+            if tokens[temp_i][1] == '()':
+                # Empty parentheses, skip directly to return type check
                 temp_i += 1
+            else:
+                # Skip to after the closing paren to look for return type
+                paren_depth = 1
+                temp_i += 1
+                while temp_i < len(tokens) and paren_depth > 0:
+                    if tokens[temp_i][1] == '(':
+                        paren_depth += 1
+                    elif tokens[temp_i][1] == ')':
+                        paren_depth -= 1
+                    temp_i += 1
 
             # Now look for return type annotation (-> Type)
             while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
@@ -2047,7 +2051,7 @@ class TLDRFormatter(Formatter):
                             angle_count -= 1
                     i += 1
                 break
-            elif ttype == Punctuation and value == '(':
+            elif ttype == Punctuation and (value == '(' or value == '()'):
                 break
             elif ttype not in (Whitespace,):
                 # Skip over other tokens until we find ( or <
@@ -2057,10 +2061,16 @@ class TLDRFormatter(Formatter):
             else:
                 i += 1
 
-        # Now look for the opening parenthesis
+        # Now look for the opening parenthesis or empty parentheses
         while i < len(tokens):
             ttype, value = tokens[i]
-            if ttype == Punctuation and value == '(':
+            if ttype == Punctuation and value == '()':
+                # Special case: empty parentheses as single token (common in PHP)
+                parameters = ''
+                i += 1
+                # Skip to the function termination logic
+                break
+            elif ttype == Punctuation and value == '(':
                 # Found function signature, now extract parameters
                 paren_count = 1
                 i += 1
@@ -2085,15 +2095,27 @@ class TLDRFormatter(Formatter):
                 # Clean up parameters - remove newlines and extra spaces
                 parameters = ' '.join(parameters.split())
 
-                # Look for TypeScript return type annotation (: Type)
+                # Look for TypeScript return type annotation (: Type) or function body
                 return_type_tokens = []
-                while i < len(tokens):
+                # Scan ahead for return type or termination, but limit the search to avoid infinite loops
+                search_limit = i + 50  # Reasonable limit for return type annotations
+                
+                while i < len(tokens) and i < search_limit:
                     ttype, value = tokens[i]
+                    
+                    # Skip whitespace when looking for terminators
+                    if ttype in (Whitespace, Text) and value.strip() == '':
+                        i += 1
+                        continue
+                    
                     if ttype == Punctuation and value == ':':
                         # Found return type annotation, collect tokens until { or ;
                         i += 1
-                        while i < len(tokens):
+                        while i < len(tokens) and i < search_limit:
                             ttype, value = tokens[i]
+                            if ttype in (Whitespace, Text) and value.strip() == '':
+                                i += 1
+                                continue
                             if value in ('{', ';') or value == '\n':
                                 break
                             return_type_tokens.append((ttype, value))
@@ -2105,13 +2127,63 @@ class TLDRFormatter(Formatter):
                         
                         return True, function_name, parameters, i, access_modifier, return_type
                     elif value in ('{', ';') or value == '\n':
+                        # Found function body or end of declaration
                         return True, function_name, parameters, i, access_modifier, return_type
+                    else:
+                        # Unexpected token, stop scanning to avoid consuming entire file
+                        break
                     i += 1
 
+                # If we didn't find a clear terminator, still return the function
+                # This handles cases where the function signature is valid but we can't find the body
                 return True, function_name, parameters, i, access_modifier, return_type
             elif ttype not in (Whitespace,):
                 break
             i += 1
+
+        # Handle case where we found empty parentheses () and need to apply termination logic
+        if 'parameters' in locals():
+            # Look for TypeScript return type annotation (: Type) or function body
+            return_type_tokens = []
+            # Scan ahead for return type or termination, but limit the search to avoid infinite loops
+            search_limit = i + 50  # Reasonable limit for return type annotations
+            
+            while i < len(tokens) and i < search_limit:
+                ttype, value = tokens[i]
+                
+                # Skip whitespace when looking for terminators
+                if ttype in (Whitespace, Text) and value.strip() == '':
+                    i += 1
+                    continue
+                
+                if ttype == Punctuation and value == ':':
+                    # Found return type annotation, collect tokens until { or ;
+                    i += 1
+                    while i < len(tokens) and i < search_limit:
+                        ttype, value = tokens[i]
+                        if ttype in (Whitespace, Text) and value.strip() == '':
+                            i += 1
+                            continue
+                        if value in ('{', ';') or value == '\n':
+                            break
+                        return_type_tokens.append((ttype, value))
+                        i += 1
+                    
+                    if return_type_tokens:
+                        return_type = ''.join(token[1] for token in return_type_tokens).strip()
+                        return_type = ' '.join(return_type.split())
+                    
+                    return True, function_name, parameters, i, access_modifier, return_type
+                elif value in ('{', ';') or value == '\n':
+                    # Found function body or end of declaration
+                    return True, function_name, parameters, i, access_modifier, return_type
+                else:
+                    # Unexpected token, stop scanning to avoid consuming entire file
+                    break
+                i += 1
+
+            # If we didn't find a clear terminator, still return the function
+            return True, function_name, parameters, i, access_modifier, return_type
 
         return False, None, None, start_idx, None, None
 
