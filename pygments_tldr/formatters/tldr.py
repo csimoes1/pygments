@@ -272,53 +272,83 @@ class TLDRFormatter(Formatter):
 
     def _detect_python_function(self, tokens, start_idx):
         """
-        Method 1: Detect Python function definitions using Name.Function tokens.
-        Only detect when the function name follows 'def' keyword, not method calls.
+        Detect Python function definitions: def, async def.
+        This includes top-level functions, methods, and nested functions.
         """
-        i = start_idx
-        while i < len(tokens) and tokens[i][0] in (Whitespace,):
-            i += 1
+        logging.debug(f"PY_DETECT: Called _detect_python_function with start_idx: {start_idx}")
+        current_token_idx = start_idx
 
-        if i >= len(tokens):
+        # Find the first significant token at or after start_idx
+        while current_token_idx < len(tokens) and tokens[current_token_idx][0] in (Whitespace, Comment.Single):
+            logging.debug(f"PY_DETECT: Skipping token at {current_token_idx}: {tokens[current_token_idx]}")
+            current_token_idx += 1
+
+        if current_token_idx >= len(tokens):
+            logging.debug(f"PY_DETECT: Reached end of tokens while skipping whitespace/comments from start_idx {start_idx}.")
             return False, None, None, start_idx, None, None
 
-        ttype, value = tokens[i]
+        logging.debug(f"PY_DETECT: First significant token at {current_token_idx}: {tokens[current_token_idx]}")
+
+        ttype, value = tokens[current_token_idx]
+        is_async_def = False
+        def_keyword_idx = -1
         
-        # Look for Name.Function token (Python)
-        if ttype == Name.Function or ttype == Name.Function.Magic:
-            # Check if this is actually a function definition, not a method call
-            # Look back to see if this follows a 'def' keyword
-            lookback_i = start_idx - 1
-            found_def = False
-            found_dot = False
+        if ttype == Keyword and value == 'async':
+            logging.debug(f"PY_DETECT: Found 'async' at index {current_token_idx}.")
+            # Look for 'def' immediately after 'async' (after skipping whitespace/comments)
+            def_idx_after_async = current_token_idx + 1
+            while def_idx_after_async < len(tokens) and tokens[def_idx_after_async][0] in (Whitespace, Comment.Single):
+                logging.debug(f"PY_DETECT: Skipping token after 'async' at {def_idx_after_async}: {tokens[def_idx_after_async]}")
+                def_idx_after_async += 1
             
-            # Look back a reasonable distance for context
-            lookback_limit = max(0, start_idx - 10)
-            while lookback_i >= lookback_limit:
-                if lookback_i >= 0 and lookback_i < len(tokens):
-                    prev_ttype, prev_value = tokens[lookback_i]
-                    
-                    if prev_value == 'def':
-                        found_def = True
-                        break
-                    elif prev_value == '.':
-                        # This is a method call like obj.__enter__
-                        found_dot = True
-                        break
-                    elif prev_ttype not in (Whitespace,):
-                        # Hit some other significant token without finding def
-                        break
-                
-                lookback_i -= 1
-            
-            # Only detect as function definition if it follows 'def' and not a dot
-            if found_def and not found_dot:
-                function_name = value
-                logging.debug(f"Found Python function definition: {function_name}")
-                i += 1
-                return self._extract_function_parameters(tokens, i, function_name, start_idx)
+            if def_idx_after_async < len(tokens):
+                def_ttype, def_value = tokens[def_idx_after_async]
+                if def_ttype == Keyword and def_value == 'def':
+                    is_async_def = True
+                    def_keyword_idx = def_idx_after_async
+                    logging.debug(f"PY_DETECT: Confirmed 'def' at {def_keyword_idx} after 'async'. This is an async function.")
+                else:
+                    logging.debug(f"PY_DETECT: 'async' at {current_token_idx} not followed by 'def'. Next significant token: {tokens[def_idx_after_async]}")
+                    return False, None, None, start_idx, None, None # 'async' not part of 'async def'
+            else:
+                logging.debug(f"PY_DETECT: Reached end of tokens looking for 'def' after 'async' (started at {current_token_idx}).")
+                return False, None, None, start_idx, None, None # 'async' at end of file or similar
+        elif ttype == Keyword and value == 'def':
+            def_keyword_idx = current_token_idx
+            logging.debug(f"PY_DETECT: Found 'def' at index {def_keyword_idx} (not preceded by async at this step).")
+            # We already established it's not 'async def' if we are in this elif block,
+            # because 'async' would have been the first significant token.
+        else:
+            logging.debug(f"PY_DETECT: First significant token is not 'async' or 'def'. Token: {tokens[current_token_idx]}")
+            return False, None, None, start_idx, None, None
+
+        # We found 'def' (potentially after 'async'). Now find the function name.
+        name_idx = def_keyword_idx + 1
+        while name_idx < len(tokens) and tokens[name_idx][0] in (Whitespace, Comment.Single):
+            logging.debug(f"PY_DETECT: Skipping token before name at {name_idx}: {tokens[name_idx]}")
+            name_idx += 1
+
+        if name_idx >= len(tokens):
+            logging.debug(f"PY_DETECT: Reached end of tokens looking for function name after 'def' at {def_keyword_idx}")
+            return False, None, None, start_idx, None, None
+
+        name_ttype, name_value = tokens[name_idx]
+        logging.debug(f"PY_DETECT: Potential function name token at {name_idx}: {tokens[name_idx]}")
+
+        if name_ttype not in (Name.Function, Name.Function.Magic, Name):
+            logging.debug(f"PY_DETECT: Token {tokens[name_idx]} is not a valid function name type.")
+            return False, None, None, start_idx, None, None
         
-        return False, None, None, start_idx, None, None
+        function_name = name_value
+
+        access_modifier_str = "async" if is_async_def else None
+
+        logging.debug(f"PY_DETECT: Successfully identified function: '{function_name}' (async: {is_async_def}). Params start after index {name_idx}.")
+
+        # Parameters start after the function name token
+        return self._extract_function_parameters(tokens, name_idx + 1, function_name,
+                                               start_idx, # original start_idx for context
+                                               access_modifier=access_modifier_str)
 
     def _detect_javascript_function(self, tokens, start_idx):
         """
@@ -1995,197 +2025,118 @@ class TLDRFormatter(Formatter):
 
         return False, None, None, start_idx, None, None
 
-    def _extract_function_parameters(self, tokens, i, function_name, start_idx, access_modifier=None, return_type=None):
+    def _extract_function_parameters(self, tokens, i, function_name, original_start_idx, access_modifier=None, return_type=None): # Added original_start_idx for clarity in logging
         """
         Common parameter extraction logic for traditional function definitions.
+        'i' is expected to be the index of the token immediately after the function name.
+        'original_start_idx' is the index passed to _detect_python_function.
         """
-        # Look forward for return type annotations (like Python type hints: -> int)
-        temp_i = i
-        while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-            temp_i += 1
+        logging.debug(f"EXTRACT_PARAMS: Called for func '{function_name}' with i={i}, original_start_idx={original_start_idx}")
 
-        # Check for opening paren first (handle both "(" and "()" cases)
-        if temp_i < len(tokens) and (tokens[temp_i][1] == '(' or tokens[temp_i][1] == '()'):
-            if tokens[temp_i][1] == '()':
-                # Empty parentheses, skip directly to return type check
-                temp_i += 1
-            else:
-                # Skip to after the closing paren to look for return type
-                paren_depth = 1
-                temp_i += 1
-                while temp_i < len(tokens) and paren_depth > 0:
-                    if tokens[temp_i][1] == '(':
-                        paren_depth += 1
-                    elif tokens[temp_i][1] == ')':
-                        paren_depth -= 1
-                    temp_i += 1
+        parameters = ""
+        # current_i is the cursor for parsing parameters and return type
+        current_i = i
 
-            # Now look for return type annotation (-> Type)
-            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                temp_i += 1
-
-            if temp_i < len(tokens) - 1:
-                if tokens[temp_i][1] == '-' and temp_i + 1 < len(tokens) and tokens[temp_i + 1][1] == '>':
-                    # Found -> annotation, get the return type
-                    temp_i += 2
-                    while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                        temp_i += 1
-                    if temp_i < len(tokens) and tokens[temp_i][0] in (Name, Name.Builtin, Keyword.Type):
-                        if not return_type:  # Don't override if already found
-                            return_type = tokens[temp_i][1]
-
-        # Look for opening parenthesis to extract parameters
-        # First, skip over any generic type parameters (e.g., <T>)
-        while i < len(tokens):
-            ttype, value = tokens[i]
-            if ttype == Punctuation and value == '<':
-                # Skip over generic type parameters
-                angle_count = 1
-                i += 1
-                while i < len(tokens) and angle_count > 0:
-                    ttype, value = tokens[i]
-                    if ttype == Punctuation:
-                        if value == '<':
-                            angle_count += 1
-                        elif value == '>':
-                            angle_count -= 1
-                    i += 1
-                break
-            elif ttype == Punctuation and (value == '(' or value == '()'):
-                break
-            elif ttype not in (Whitespace,):
-                # Skip over other tokens until we find ( or <
-                i += 1
-                if i >= len(tokens):
-                    break
-            else:
-                i += 1
-
-        # Now look for the opening parenthesis or empty parentheses
-        while i < len(tokens):
-            ttype, value = tokens[i]
-            if ttype == Punctuation and value == '()':
-                # Special case: empty parentheses as single token (common in PHP)
-                parameters = ''
-                i += 1
-                # Skip to the function termination logic
-                break
-            elif ttype == Punctuation and value == '(':
-                # Found function signature, now extract parameters
+        # Look for opening parenthesis
+        param_scan_start_i = current_i
+        while current_i < len(tokens):
+            ttype, value = tokens[current_i]
+            if ttype in (Whitespace, Comment.Single): # Skip whitespace/comments before '('
+                current_i += 1
+                continue
+            if ttype == Punctuation and value == '(':
+                # Found opening parenthesis, now extract parameters
                 paren_count = 1
-                i += 1
+                current_i += 1 # Move past '('
                 param_tokens = []
 
-                while i < len(tokens) and paren_count > 0:
-                    ttype, value = tokens[i]
-                    if ttype == Punctuation:
-                        if value == '(':
+                while current_i < len(tokens) and paren_count > 0:
+                    param_ttype, param_value = tokens[current_i]
+                    if param_ttype == Punctuation:
+                        if param_value == '(':
                             paren_count += 1
-                        elif value == ')':
+                        elif param_value == ')':
                             paren_count -= 1
 
-                    # Collect parameter tokens (exclude the closing parenthesis)
-                    if paren_count > 0:
-                        param_tokens.append((ttype, value))
+                    if paren_count > 0: # Collect tokens inside parentheses
+                        param_tokens.append((param_ttype, param_value))
+                    current_i += 1 # Move to next token (this will be after closing ')' if loop finishes)
 
-                    i += 1
-
-                # Extract parameter string
                 parameters = ''.join(token[1] for token in param_tokens).strip()
-                # Clean up parameters - remove newlines and extra spaces
-                parameters = ' '.join(parameters.split())
-
-                # Look for TypeScript return type annotation (: Type) or function body
-                return_type_tokens = []
-                # Scan ahead for return type or termination, but limit the search to avoid infinite loops
-                search_limit = i + 50  # Reasonable limit for return type annotations
+                parameters = ' '.join(parameters.split()) # Normalize whitespace
+                logging.debug(f"EXTRACT_PARAMS: Extracted params for '{function_name}': '{parameters}'. current_i after params: {current_i}")
                 
-                while i < len(tokens) and i < search_limit:
-                    ttype, value = tokens[i]
+                # Parameters extracted (or empty if none). current_i is now at the token AFTER the closing ')'
+
+                # Look for Python return type annotation (-> Type)
+                # Skip whitespace/comments before '->'
+                after_params_i = current_i
+                while after_params_i < len(tokens) and tokens[after_params_i][0] in (Whitespace, Comment.Single):
+                    after_params_i += 1
+
+                # Check for '->'
+                if after_params_i < len(tokens) - 1 and \
+                   tokens[after_params_i][0] == Operator and tokens[after_params_i][1] == '-' and \
+                   tokens[after_params_i+1][0] == Operator and tokens[after_params_i+1][1] == '>':
                     
-                    # Skip whitespace when looking for terminators
-                    if ttype in (Whitespace, Text) and value.strip() == '':
-                        i += 1
-                        continue
+                    logging.debug(f"EXTRACT_PARAMS: Found '->' for return type for '{function_name}' at index {after_params_i}.")
+                    current_i = after_params_i + 2 # Move past '->'
                     
-                    if ttype == Punctuation and value == ':':
-                        # Found return type annotation, collect tokens until { or ;
-                        i += 1
-                        while i < len(tokens) and i < search_limit:
-                            ttype, value = tokens[i]
-                            if ttype in (Whitespace, Text) and value.strip() == '':
-                                i += 1
-                                continue
-                            if value in ('{', ';') or value == '\n':
-                                break
-                            return_type_tokens.append((ttype, value))
-                            i += 1
-                        
-                        if return_type_tokens:
-                            return_type = ''.join(token[1] for token in return_type_tokens).strip()
-                            return_type = ' '.join(return_type.split())
-                        
-                        return True, function_name, parameters, i, access_modifier, return_type
-                    elif value in ('{', ';') or value == '\n':
-                        # Found function body or end of declaration
-                        return True, function_name, parameters, i, access_modifier, return_type
-                    else:
-                        # Unexpected token, stop scanning to avoid consuming entire file
-                        break
-                    i += 1
+                    # Skip whitespace/comments before return type value
+                    while current_i < len(tokens) and tokens[current_i][0] in (Whitespace, Comment.Single):
+                        current_i += 1
 
-                # If we didn't find a clear terminator, still return the function
-                # This handles cases where the function signature is valid but we can't find the body
-                return True, function_name, parameters, i, access_modifier, return_type
-            elif ttype not in (Whitespace,):
-                break
-            i += 1
-
-        # Handle case where we found empty parentheses () and need to apply termination logic
-        if 'parameters' in locals():
-            # Look for TypeScript return type annotation (: Type) or function body
-            return_type_tokens = []
-            # Scan ahead for return type or termination, but limit the search to avoid infinite loops
-            search_limit = i + 50  # Reasonable limit for return type annotations
-            
-            while i < len(tokens) and i < search_limit:
-                ttype, value = tokens[i]
-                
-                # Skip whitespace when looking for terminators
-                if ttype in (Whitespace, Text) and value.strip() == '':
-                    i += 1
-                    continue
-                
-                if ttype == Punctuation and value == ':':
-                    # Found return type annotation, collect tokens until { or ;
-                    i += 1
-                    while i < len(tokens) and i < search_limit:
-                        ttype, value = tokens[i]
-                        if ttype in (Whitespace, Text) and value.strip() == '':
-                            i += 1
-                            continue
-                        if value in ('{', ';') or value == '\n':
+                    return_type_tokens_list = []
+                    # Collect return type tokens until a colon
+                    while current_i < len(tokens):
+                        rt_ttype, rt_value = tokens[current_i]
+                        if rt_ttype == Punctuation and rt_value == ':': # Colon ends the return type part
                             break
-                        return_type_tokens.append((ttype, value))
-                        i += 1
-                    
-                    if return_type_tokens:
-                        return_type = ''.join(token[1] for token in return_type_tokens).strip()
-                        return_type = ' '.join(return_type.split())
-                    
-                    return True, function_name, parameters, i, access_modifier, return_type
-                elif value in ('{', ';') or value == '\n':
-                    # Found function body or end of declaration
-                    return True, function_name, parameters, i, access_modifier, return_type
-                else:
-                    # Unexpected token, stop scanning to avoid consuming entire file
-                    break
-                i += 1
+                        # Stop if it's a comment or newline that's not part of a multi-line type hint
+                        if rt_ttype == Comment.Single: break
+                        if rt_value == '\n' and not (len(return_type_tokens_list) > 0 and return_type_tokens_list[-1].endswith(',')): # crude check for multi-line hint
+                            break
 
-            # If we didn't find a clear terminator, still return the function
-            return True, function_name, parameters, i, access_modifier, return_type
+                        return_type_tokens_list.append(rt_value)
+                        current_i += 1
 
-        return False, None, None, start_idx, None, None
+                    if return_type_tokens_list:
+                        # Ensure we don't include trailing whitespace that was part of the loop breaking
+                        new_return_type = ''.join(return_type_tokens_list).strip()
+                        if new_return_type: # Only assign if something was collected
+                             return_type = new_return_type
+                        logging.debug(f"EXTRACT_PARAMS: Extracted return type for '{function_name}': '{return_type}'. current_i after return type: {current_i}")
+                
+                # After parameters and optional return type, we MUST find a colon for Python
+                # current_i should be pointing at the colon or just before it (if it skipped whitespace after return type)
+                while current_i < len(tokens):
+                    colon_ttype, colon_value = tokens[current_i]
+                    if colon_ttype in (Whitespace, Comment.Single):
+                        current_i += 1
+                        continue
+                    if colon_ttype == Punctuation and colon_value == ':':
+                        logging.debug(f"EXTRACT_PARAMS: Found colon for '{function_name}' at index {current_i}. Returning SUCCESS with end_idx {current_i + 1}.")
+                        return True, function_name, parameters, current_i + 1, access_modifier, return_type
+                    else:
+                        # No colon found immediately where expected after params/return type.
+                        # This is an error for Python.
+                        logging.error(f"EXTRACT_PARAMS: No colon found for Python function '{function_name}' where expected. current_i: {current_i}. Token: {tokens[current_i] if current_i < len(tokens) else 'EOF'}. Returning FAILURE.")
+                        return False, None, None, original_start_idx, None, None # Indicate failure
+                
+                # Reached end of tokens while looking for colon - also a failure for Python
+                logging.error(f"EXTRACT_PARAMS: EOF while looking for colon for Python function '{function_name}'. Returning FAILURE.")
+                return False, None, None, original_start_idx, None, None
+
+            elif ttype not in (Whitespace, Comment.Single):
+                # First significant token after function name was not '('. This is not a valid Python def.
+                logging.debug(f"EXTRACT_PARAMS: Expected '(' for params of '{function_name}', but found {tokens[current_i]} at {current_i}. Returning FAILURE.")
+                return False, None, None, original_start_idx, None, None
+
+            current_i +=1 # Part of the loop skipping whitespace/comments to find '('
+
+        # If loop finishes, means no opening '(' found after the function name
+        logging.debug(f"EXTRACT_PARAMS: Did not find opening '(' for parameters for '{function_name}' starting search from index {param_scan_start_i}. Returning FAILURE.")
+        return False, None, None, original_start_idx, None, None
 
     def _extract_ruby_function_parameters(self, tokens, i, function_name, start_idx, access_modifier=None, return_type=None):
         """

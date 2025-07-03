@@ -12,6 +12,7 @@ Usage:
 import sys
 import os
 from pathlib import Path
+import logging
 
 # Add the parent directory to the Python path so we can import pygments_tldr
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -95,6 +96,7 @@ def extract_functions_from_file(filename):
 
 def main():
     """Main function to process command line arguments and extract functions."""
+    # logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(name)s:%(funcName)s:%(lineno)d: %(message)s') # Removed
     
     if len(sys.argv) != 2:
         print("Usage: python simple_file_test.py <filename>")
