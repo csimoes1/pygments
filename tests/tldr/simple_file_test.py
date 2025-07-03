@@ -60,12 +60,12 @@ def extract_functions_from_file(filename):
         lang = 'python'
     elif 'java' in lexer_name:
         lang = 'java'
-    elif 'c' in lexer_name:
-        lang = 'c'
-    elif 'cpp' in lexer_name or 'c++' in lexer_name:
-        lang = 'cpp'
     elif 'csharp' in lexer_name:
         lang = 'csharp'
+    elif 'cpp' in lexer_name or 'c++' in lexer_name:
+        lang = 'cpp'
+    elif 'c' in lexer_name:
+        lang = 'c'
     elif 'go' in lexer_name:
         lang = 'go'
     elif 'rust' in lexer_name:

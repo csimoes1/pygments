@@ -532,7 +532,7 @@ class TLDRFormatter(Formatter):
         for j in range(lookback_start, i):
             if j < len(tokens):
                 ttype, value = tokens[j]
-                if ttype == Keyword and value in ('public', 'private', 'protected', 'internal', 'static', 'virtual', 'override', 'abstract', 'sealed', 'extern', 'readonly', 'const'):
+                if ttype in (Keyword, Keyword.Declaration) and value in ('public', 'private', 'protected', 'internal', 'static', 'virtual', 'override', 'abstract', 'sealed', 'extern', 'readonly', 'const'):
                     access_modifiers.append(value)
                 elif ttype == Keyword and value == 'async':
                     is_async = True
@@ -547,44 +547,129 @@ class TLDRFormatter(Formatter):
         function_name = ""
         
         # Check if this is a method name (Name token followed by parentheses or property)
+        # But ensure we don't detect method calls or constructor calls
         if ttype in (Name.Function, Name.Other, Name, Name.Property):
-            # Look ahead to determine if this is a method, property, or constructor
-            temp_i = i + 1
-            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                temp_i += 1
+            # Check context to ensure this is actually a method definition
+            is_method_definition = False
             
-            if temp_i < len(tokens):
-                next_token = tokens[temp_i][1]
+            # Look back to see if this is preceded by 'new' (constructor call) or '.' (method call)
+            lookback_i = i - 1
+            lookback_limit = max(0, i - 5)
+            found_new = False
+            found_dot = False
+            
+            while lookback_i >= lookback_limit:
+                if lookback_i >= 0 and lookback_i < len(tokens):
+                    prev_ttype, prev_value = tokens[lookback_i]
+                    
+                    if prev_value == 'new':
+                        # This is a constructor call like 'new SomeClass()'
+                        found_new = True
+                        break
+                    elif prev_value == '.':
+                        # This is a method call like 'obj.Method()'
+                        found_dot = True
+                        break
+                    elif prev_ttype not in (Whitespace,):
+                        # Hit some other significant token
+                        break
                 
-                if next_token == '(':
-                    # This is a method or constructor
-                    function_name = value
-                    logging.debug(f"Found C# method definition: {function_name}")
+                lookback_i -= 1
+            
+            # Only consider as method definition if:
+            # 1. Not preceded by 'new' (not a constructor call)
+            # 2. Not preceded by '.' (not a method call)  
+            # 3. Has access modifiers OR return types (indicating method signature)
+            #    OR looks like a constructor (starts with uppercase and has access modifiers)
+            is_likely_constructor = value[0].isupper() and access_modifiers
+            if not found_new and not found_dot and (access_modifiers or return_types or is_likely_constructor):
+                is_method_definition = True
+            
+            if is_method_definition:
+                # Look ahead to determine if this is a method, property, or constructor
+                temp_i = i + 1
+                while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                    temp_i += 1
+                
+                if temp_i < len(tokens):
+                    next_token = tokens[temp_i][1]
                     
-                    # Check if this might be a constructor
-                    if value[0].isupper() and not return_types:
-                        is_constructor = True
-                        logging.debug(f"Detected C# constructor: {function_name}")
-                    
-                    i += 1
-                    return self._extract_csharp_method_parameters(tokens, i, function_name, start_idx, access_modifiers, return_types, is_constructor, is_async)
-                    
-                elif next_token == '{':
-                    # This might be a property
-                    function_name = value
-                    is_property = True
-                    logging.debug(f"Found C# property definition: {function_name}")
-                    
-                    i += 1
-                    return self._extract_csharp_property_definition(tokens, i, function_name, start_idx, access_modifiers, return_types)
+                    if next_token == '(':
+                        # This is a method or constructor
+                        function_name = value
+                        logging.debug(f"Found C# method definition: {function_name}")
+                        
+                        # Check if this might be a constructor
+                        if value[0].isupper() and not return_types:
+                            is_constructor = True
+                            logging.debug(f"Detected C# constructor: {function_name}")
+                        
+                        i += 1
+                        return self._extract_csharp_method_parameters(tokens, i, function_name, start_idx, access_modifiers, return_types, is_constructor, is_async)
+                        
+                    elif next_token == '{':
+                        # This might be a property
+                        function_name = value
+                        is_property = True
+                        logging.debug(f"Found C# property definition: {function_name}")
+                        
+                        i += 1
+                        return self._extract_csharp_property_definition(tokens, i, function_name, start_idx, access_modifiers, return_types)
         
         return False, None, None, start_idx, None, None
 
     def _detect_c_family_function(self, tokens, start_idx):
         """
         Method 6: Detect C/C++ function definitions.
+        Handles: function declarations, class methods, constructors, destructors.
+        Only detects actual function definitions, not function calls.
         """
-        return self._detect_generic_function(tokens, start_idx)
+        i = start_idx
+        access_modifiers = []
+        return_types = []
+        is_constructor = False
+        is_destructor = False
+        
+        # Skip whitespace at the beginning
+        while i < len(tokens) and tokens[i][0] in (Whitespace,):
+            i += 1
+
+        if i >= len(tokens):
+            return False, None, None, start_idx, None, None
+
+        # Collect access modifiers and return types by looking back
+        lookback_start = max(0, start_idx - 15)
+        for j in range(lookback_start, i):
+            if j < len(tokens):
+                ttype, value = tokens[j]
+                if ttype in (Keyword, Keyword.Declaration) and value in ('public', 'private', 'protected', 'static', 'virtual', 'inline', 'extern', 'const', 'volatile'):
+                    access_modifiers.append(value)
+                elif ttype in (Keyword.Type, Name.Builtin.Type) and value in ('void', 'int', 'char', 'float', 'double', 'long', 'short', 'bool', 'unsigned', 'signed'):
+                    return_types.append(value)
+                elif ttype == Name and value in ('std', 'string', 'vector', 'map', 'set'):  # Common C++ types
+                    return_types.append(value)
+        
+        # Look for function name
+        ttype, value = tokens[i]
+        function_name = ""
+        
+        # For C/C++, be extremely conservative - only detect very clear function definitions
+        # DISABLE overly broad detection like other languages
+        # Only detect Name.Function tokens with proper context
+        if ttype == Name.Function and (access_modifiers or return_types or value == 'main'):
+            # Look ahead to confirm this is followed by parentheses
+            temp_i = i + 1
+            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                temp_i += 1
+            
+            if temp_i < len(tokens) and tokens[temp_i][1] == '(':
+                function_name = value
+                logging.debug(f"Found C/C++ function definition: {function_name}")
+                
+                i += 1
+                return self._extract_function_parameters(tokens, i, function_name, start_idx, ' '.join(access_modifiers) if access_modifiers else None, ' '.join(return_types) if return_types else None)
+        
+        return False, None, None, start_idx, None, None
 
     def _detect_rust_function(self, tokens, start_idx):
         """
