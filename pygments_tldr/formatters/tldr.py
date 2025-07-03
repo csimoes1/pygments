@@ -273,6 +273,7 @@ class TLDRFormatter(Formatter):
     def _detect_python_function(self, tokens, start_idx):
         """
         Method 1: Detect Python function definitions using Name.Function tokens.
+        Only detect when the function name follows 'def' keyword, not method calls.
         """
         i = start_idx
         while i < len(tokens) and tokens[i][0] in (Whitespace,):
@@ -285,11 +286,37 @@ class TLDRFormatter(Formatter):
         
         # Look for Name.Function token (Python)
         if ttype == Name.Function or ttype == Name.Function.Magic:
-            function_name = value
-            logging.debug(f"Found Python function definition: {function_name}")
-            i += 1
+            # Check if this is actually a function definition, not a method call
+            # Look back to see if this follows a 'def' keyword
+            lookback_i = start_idx - 1
+            found_def = False
+            found_dot = False
             
-            return self._extract_function_parameters(tokens, i, function_name, start_idx)
+            # Look back a reasonable distance for context
+            lookback_limit = max(0, start_idx - 10)
+            while lookback_i >= lookback_limit:
+                if lookback_i >= 0 and lookback_i < len(tokens):
+                    prev_ttype, prev_value = tokens[lookback_i]
+                    
+                    if prev_value == 'def':
+                        found_def = True
+                        break
+                    elif prev_value == '.':
+                        # This is a method call like obj.__enter__
+                        found_dot = True
+                        break
+                    elif prev_ttype not in (Whitespace,):
+                        # Hit some other significant token without finding def
+                        break
+                
+                lookback_i -= 1
+            
+            # Only detect as function definition if it follows 'def' and not a dot
+            if found_def and not found_dot:
+                function_name = value
+                logging.debug(f"Found Python function definition: {function_name}")
+                i += 1
+                return self._extract_function_parameters(tokens, i, function_name, start_idx)
         
         return False, None, None, start_idx, None, None
 
