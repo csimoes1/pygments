@@ -433,7 +433,7 @@ class TLDRFormatter(Formatter):
         for j in range(lookback_start, i):
             if j < len(tokens):
                 ttype, value = tokens[j]
-                if ttype == Keyword and value in ('public', 'private', 'protected', 'static', 'final', 'abstract', 'synchronized', 'native', 'strictfp'):
+                if ttype in (Keyword, Keyword.Declaration) and value in ('public', 'private', 'protected', 'static', 'final', 'abstract', 'synchronized', 'native', 'strictfp'):
                     access_modifiers.append(value)
                 elif ttype in (Keyword.Type, Name.Builtin.Type) and value in ('void', 'int', 'boolean', 'char', 'byte', 'short', 'long', 'float', 'double'):
                     return_types.append(value)
@@ -445,23 +445,61 @@ class TLDRFormatter(Formatter):
         function_name = ""
         
         # Check if this is a method name (Name token followed by parentheses)
+        # But ensure we don't detect constructor calls or method calls
         if ttype in (Name.Function, Name.Other, Name):
-            # Look ahead to confirm this is followed by parentheses
-            temp_i = i + 1
-            while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
-                temp_i += 1
+            # Check context to ensure this is actually a method definition
+            is_method_definition = False
             
-            if temp_i < len(tokens) and tokens[temp_i][1] == '(':
-                function_name = value
-                logging.debug(f"Found Java method definition: {function_name}")
+            # Look back to see if this is preceded by 'new' (constructor call)
+            lookback_i = i - 1
+            lookback_limit = max(0, i - 5)
+            found_new = False
+            found_dot = False
+            
+            while lookback_i >= lookback_limit:
+                if lookback_i >= 0 and lookback_i < len(tokens):
+                    prev_ttype, prev_value = tokens[lookback_i]
+                    
+                    if prev_value == 'new':
+                        # This is a constructor call like 'new SomeClass()'
+                        found_new = True
+                        break
+                    elif prev_value == '.':
+                        # This is a method call like 'obj.method()'
+                        found_dot = True
+                        break
+                    elif prev_ttype not in (Whitespace,):
+                        # Hit some other significant token
+                        break
                 
-                # Check if this might be a constructor (method name matches class name pattern)
-                if value[0].isupper() and not return_types:
-                    is_constructor = True
-                    logging.debug(f"Detected Java constructor: {function_name}")
+                lookback_i -= 1
+            
+            # Only consider as method definition if:
+            # 1. Not preceded by 'new' (not a constructor call)
+            # 2. Not preceded by '.' (not a method call)  
+            # 3. Has access modifiers OR return types (indicating method signature)
+            #    OR looks like a constructor (starts with uppercase and has access modifiers)
+            is_likely_constructor = value[0].isupper() and access_modifiers
+            if not found_new and not found_dot and (access_modifiers or return_types or is_likely_constructor):
+                is_method_definition = True
+            
+            if is_method_definition:
+                # Look ahead to confirm this is followed by parentheses
+                temp_i = i + 1
+                while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
+                    temp_i += 1
                 
-                i += 1
-                return self._extract_java_method_parameters(tokens, i, function_name, start_idx, access_modifiers, return_types, is_constructor)
+                if temp_i < len(tokens) and tokens[temp_i][1] == '(':
+                    function_name = value
+                    logging.debug(f"Found Java method definition: {function_name}")
+                    
+                    # Check if this might be a constructor (method name matches class name pattern)
+                    if value[0].isupper() and not return_types:
+                        is_constructor = True
+                        logging.debug(f"Detected Java constructor: {function_name}")
+                    
+                    i += 1
+                    return self._extract_java_method_parameters(tokens, i, function_name, start_idx, access_modifiers, return_types, is_constructor)
         
         return False, None, None, start_idx, None, None
 
