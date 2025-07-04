@@ -96,7 +96,7 @@ def extract_functions_from_file(filename):
 
 def main():
     """Main function to process command line arguments and extract functions."""
-    # logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(name)s:%(funcName)s:%(lineno)d: %(message)s') # Removed
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s:%(name)s:%(module)s:%(funcName)s:%(lineno)d: %(message)s') # Enabled
     
     if len(sys.argv) != 2:
         print("Usage: python simple_file_test.py <filename>")

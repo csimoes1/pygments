@@ -573,79 +573,166 @@ class TLDRFormatter(Formatter):
                     return_types.append(value)
         
         # Look for method/property name
-        ttype, value = tokens[i]
+        current_name_idx = i
+        ttype, value = tokens[current_name_idx]
+        function_name = ""
+
+        # Look for method/property name
+        current_name_idx = i
+        ttype, value = tokens[current_name_idx]
         function_name = ""
         
+        # --- Start Refined Return Type Logic ---
+        # This block attempts to more accurately determine the return type
+        # by looking immediately left of the potential function name `value`.
+        # It will override the broadly collected `return_types` if it finds a plausible type.
+
+        temp_refined_return_type_str = None
+        if ttype in (Name.Function, Name.Other, Name, Name.Property): # Only try if 'value' could be a member name
+            _idx = current_name_idx - 1
+            _temp_type_tokens = []
+            # Skip whitespace/comments immediately before the potential function name
+            while _idx >=0 and tokens[_idx][0] in (Whitespace, Comment.Single):
+                _idx -= 1
+
+            # Collect actual type tokens backwards until a modifier or non-type is hit
+            while _idx >= 0:
+                _t_ttype, _t_value = tokens[_idx]
+                if _t_ttype in (Whitespace, Comment.Single):
+                    _idx -=1
+                    continue
+                # Stop if we hit a known modifier for C# members
+                if _t_ttype == Keyword and _t_value in ('public', 'private', 'protected', 'internal', 'static', 'virtual', 'override', 'abstract', 'sealed', 'extern', 'readonly', 'const', 'async', 'partial', 'new'):
+                    break
+                # Stop if we hit what looks like the start of another declaration or a clear non-type token
+                if _t_ttype == Punctuation and _t_value in (';', '{', '}', ')'): # Stop before these from previous statements
+                    break
+                if _t_ttype == Keyword and _t_value in ('class', 'struct', 'interface', 'enum', 'delegate', 'namespace', 'using'): # Declaration keywords
+                     break
+
+                # Parts of a C# type signature (simplified)
+                # Includes Name (MyType), Keyword.Type (void), Punctuation for generics/arrays (<,>,[,],?), dots for namespaces
+                if _t_ttype in (Name, Name.Class, Keyword.Type, Name.Builtin.Type) or \
+                   (_t_ttype == Punctuation and _t_value in ('<', '>', '[', ']', '?', '.', ',')):
+                    _temp_type_tokens.append(_t_value)
+                else: # Not a recognized type part or modifier
+                    break
+                _idx -= 1
+
+            if _temp_type_tokens:
+                temp_refined_return_type_str = "".join(reversed(_temp_type_tokens)).strip()
+                # logging.debug(f"CS_DETECT: Refined lookback for '{value}' suggests return type: '{temp_refined_return_type_str}' from tokens {list(reversed(_temp_type_tokens))}")
+                return_types = [temp_refined_return_type_str] # Override broadly collected one
+            # else:
+                # logging.debug(f"CS_DETECT: Refined type lookback found nothing for '{value}'. Original return_types: {return_types}")
+        # --- End Refined Return Type Logic ---
+
+        # logging.debug(f"CS_DETECT: At index {current_name_idx}, token: {(ttype, value)}. Modifiers: {access_modifiers}, FINAL ReturnTypes for eval: {return_types}, IsAsync: {is_async}")
+
         # Check if this is a method name (Name token followed by parentheses or property)
         # But ensure we don't detect method calls or constructor calls
-        if ttype in (Name.Function, Name.Other, Name, Name.Property):
+        if ttype in (Name.Function, Name.Other, Name, Name.Property, Name.Class): # Added Name.Class for checking
             # Check context to ensure this is actually a method definition
-            is_method_definition = False
+            is_member_definition = False # Renamed for clarity
             
             # Look back to see if this is preceded by 'new' (constructor call) or '.' (method call)
-            lookback_i = i - 1
-            lookback_limit = max(0, i - 5)
+            # Also check for 'await' for async calls
+            lookback_i = current_name_idx - 1 # current_name_idx points to the potential function name
+            lookback_limit = max(0, current_name_idx - 5) # Increased lookback slightly for await
             found_new = False
             found_dot = False
-            
+            found_await_before = False # New flag
+
             while lookback_i >= lookback_limit:
                 if lookback_i >= 0 and lookback_i < len(tokens):
                     prev_ttype, prev_value = tokens[lookback_i]
                     
+                    if prev_ttype in (Whitespace, Comment.Single): # Skip whitespace and comments
+                        lookback_i -= 1
+                        continue
+
                     if prev_value == 'new':
-                        # This is a constructor call like 'new SomeClass()'
                         found_new = True
                         break
                     elif prev_value == '.':
-                        # This is a method call like 'obj.Method()'
                         found_dot = True
                         break
-                    elif prev_ttype not in (Whitespace,):
-                        # Hit some other significant token
+                    elif prev_ttype == Keyword and prev_value == 'await': # Check for await
+                        found_await_before = True
                         break
-                
+                    # else if it's another significant token, break
+                    elif prev_ttype not in (Whitespace, Comment.Single):
+                        break
+                else:
+                    break
                 lookback_i -= 1
             
-            # Only consider as method definition if:
+            # Only consider as member definition if:
             # 1. Not preceded by 'new' (not a constructor call)
-            # 2. Not preceded by '.' (not a method call)  
-            # 3. Has access modifiers OR return types (indicating method signature)
+            # 2. Not preceded by '.' (not a method call)
+            # 3. Not preceded by 'await' (not an async call)
+            # 4. Has access modifiers OR return types (indicating method signature)
             #    OR looks like a constructor (starts with uppercase and has access modifiers)
             is_likely_constructor = value[0].isupper() and access_modifiers
-            if not found_new and not found_dot and (access_modifiers or return_types or is_likely_constructor):
-                is_method_definition = True
+            if not found_new and not found_dot and not found_await_before and \
+               (access_modifiers or return_types or is_likely_constructor):
+                is_member_definition = True
             
-            if is_method_definition:
+            # logging.debug(f"CS_DETECT: Token {(ttype, value)}, is_member_definition: {is_member_definition}, found_new: {found_new}, found_dot: {found_dot}, found_await: {found_await_before}, access_modifiers: {access_modifiers}, return_types: {return_types}, is_likely_constructor: {is_likely_constructor}")
+
+            if is_member_definition:
                 # Look ahead to determine if this is a method, property, or constructor
-                temp_i = i + 1
+                temp_i = current_name_idx + 1
                 while temp_i < len(tokens) and tokens[temp_i][0] in (Whitespace,):
                     temp_i += 1
                 
                 if temp_i < len(tokens):
-                    next_token = tokens[temp_i][1]
-                    
-                    if next_token == '(':
+                    next_token_ttype, next_token_value = tokens[temp_i]
+                    # logging.debug(f"CS_DETECT: Next significant token after name: {(next_token_ttype, next_token_value)} at index {temp_i}")
+
+                    if next_token_value == '(':
                         # This is a method or constructor
                         function_name = value
-                        logging.debug(f"Found C# method definition: {function_name}")
+                        # logging.debug(f"CS_DETECT: Determined METHOD: {function_name}")
                         
                         # Check if this might be a constructor
-                        if value[0].isupper() and not return_types:
+                        if value[0].isupper() and not return_types: # Constructors don't have explicit return types
                             is_constructor = True
-                            logging.debug(f"Detected C# constructor: {function_name}")
+                            # logging.debug(f"CS_DETECT: Determined CONSTRUCTOR: {function_name}")
                         
-                        i += 1
-                        return self._extract_csharp_method_parameters(tokens, i, function_name, start_idx, access_modifiers, return_types, is_constructor, is_async)
+                        return self._extract_csharp_method_parameters(tokens, temp_i, function_name, start_idx, access_modifiers, return_types, is_constructor, is_async) # Pass temp_i (index of '(')
                         
-                    elif next_token == '{':
-                        # This might be a property
-                        function_name = value
-                        is_property = True
-                        logging.debug(f"Found C# property definition: {function_name}")
+                    elif next_token_value == '{' and ttype != Name.Class : # It's a property if not a class def
+                        # This might be a property. Ensure it's not a class definition.
+                        is_valid_property_candidate = True
+                        if ttype == Name.Class: # e.g. "class MyClass {" - not a property
+                            # logging.debug(f"CS_DETECT: Token {value} is Name.Class, not a property name here.")
+                            is_valid_property_candidate = False
                         
-                        i += 1
-                        return self._extract_csharp_property_definition(tokens, i, function_name, start_idx, access_modifiers, return_types)
-        
+                        if not return_types:
+                            if not is_likely_constructor:
+                                # logging.debug(f"CS_DETECT: Token {value} followed by '{{', no return_types, and not is_likely_constructor. Not a property.")
+                                is_valid_property_candidate = False
+                            else:
+                                # logging.debug(f"CS_DETECT: Token {value} looks like constructor but has no return type. Could be misidentified due to sticky modifiers if not actual constructor.")
+                                # logging.debug(f"CS_DETECT: Token {value} followed by '{{'. No explicit return_type. If this isn't a constructor, it's not a property.")
+                                if value != "this":
+                                     # logging.debug(f"CS_DETECT: {value} followed by '{{', no return_types. Not a property.")
+                                     is_valid_property_candidate = False
+
+
+                        if is_valid_property_candidate:
+                            function_name = value
+                            is_property = True
+                            # logging.debug(f"CS_DETECT: Determined PROPERTY: {function_name}")
+                            return self._extract_csharp_property_definition(tokens, temp_i, function_name, start_idx, access_modifiers, return_types)
+                        # else:
+                            # logging.debug(f"CS_DETECT: Token {value} followed by '{{', but conditions not met for property. Current ttype: {ttype}, return_types: {return_types}")
+                    # else:
+                        # logging.debug(f"CS_DETECT: Token {value} followed by {next_token_value}, not a method or property.")
+            # else:
+                # logging.debug(f"CS_DETECT: Token {(ttype, value)} not considered a member definition.")
+
         return False, None, None, start_idx, None, None
 
     def _detect_c_family_function(self, tokens, start_idx):
@@ -2280,9 +2367,8 @@ class TLDRFormatter(Formatter):
                 if func['access_modifier']:
                     signature_parts.append(f"{func['access_modifier']}")
 
-                # TODO: we don't currently get all return types so ignore for now
-                # if func['return_type']:
-                #     signature_parts.append(f"{func['return_type']}")
+                if func['return_type']: # Un-commented for C# and other languages
+                    signature_parts.append(f"{func['return_type']}")
 
                 # signature_parts.append(f"**{func['name']}**")
                 signature_parts.append(f"{func['name']}")
